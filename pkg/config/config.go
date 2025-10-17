@@ -80,13 +80,26 @@ type CustomNamespace struct {
 }
 
 type Metric struct {
-	Name                   string   `yaml:"name"`
-	Statistics             []string `yaml:"statistics"`
-	Period                 int64    `yaml:"period"`
-	Length                 int64    `yaml:"length"`
-	Delay                  int64    `yaml:"delay"`
-	NilToZero              *bool    `yaml:"nilToZero"`
-	AddCloudwatchTimestamp *bool    `yaml:"addCloudwatchTimestamp"`
+	Name                   string        `yaml:"name"`
+	Statistics             []string      `yaml:"statistics"`
+	Period                 int64         `yaml:"period"`
+	Length                 int64         `yaml:"length"`
+	Delay                  int64         `yaml:"delay"`
+	NilToZero              *bool         `yaml:"nilToZero"`
+	AddCloudwatchTimestamp *bool         `yaml:"addCloudwatchTimestamp"`
+	ExportAllDataPoints    *bool         `yaml:"exportAllDataPoints"`
+	Expression             string        `yaml:"expression"`
+	MetricStats            []MetricStat  `yaml:"metricStats"`
+	Label                  string        `yaml:"label"`
+}
+
+type MetricStat struct {
+	Id         string      `yaml:"id"`
+	MetricName string      `yaml:"metricName"`
+	Namespace  string      `yaml:"namespace"`
+	Dimensions []Dimension `yaml:"dimensions"`
+	Statistic  string      `yaml:"statistic"`
+	Period     int64       `yaml:"period"`
 }
 
 type Dimension struct {
@@ -318,11 +331,36 @@ func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent str
 		return fmt.Errorf("Metric [%s/%d] in %v: Name should not be empty", m.Name, metricIdx, parent)
 	}
 
+	isMetricMath := m.Expression != ""
+
+	if isMetricMath {
+		if len(m.Statistics) > 0 {
+			return fmt.Errorf("Metric [%s/%d] in %v: Cannot specify both Expression and Statistics", m.Name, metricIdx, parent)
+		}
+
+		for i, ms := range m.MetricStats {
+			if ms.Id == "" {
+				return fmt.Errorf("Metric [%s/%d] in %v: MetricStat[%d] must have an id", m.Name, metricIdx, parent, i)
+			}
+			if ms.MetricName == "" {
+				return fmt.Errorf("Metric [%s/%d] in %v: MetricStat[%d] must have a metricName", m.Name, metricIdx, parent, i)
+			}
+			if ms.Statistic == "" {
+				return fmt.Errorf("Metric [%s/%d] in %v: MetricStat[%d] must have a statistic", m.Name, metricIdx, parent, i)
+			}
+		}
+	} else {
+		// Standard metric validation
+		if len(m.MetricStats) > 0 {
+			return fmt.Errorf("Metric [%s/%d] in %v: MetricStats can only be specified with Expression", m.Name, metricIdx, parent)
+		}
+	}
+
 	mStatistics := m.Statistics
 	if len(mStatistics) == 0 && discovery != nil {
 		if len(discovery.Statistics) > 0 {
 			mStatistics = discovery.Statistics
-		} else {
+		} else if !isMetricMath {
 			return fmt.Errorf("Metric [%s/%d] in %v: Statistics should not be empty", m.Name, metricIdx, parent)
 		}
 	}
@@ -511,7 +549,7 @@ func toModelDimensions(dimensions []Dimension) []model.Dimension {
 func toModelMetricConfig(metrics []*Metric) []*model.MetricConfig {
 	ret := make([]*model.MetricConfig, 0, len(metrics))
 	for _, m := range metrics {
-		ret = append(ret, &model.MetricConfig{
+		mc := &model.MetricConfig{
 			Name:                   m.Name,
 			Statistics:             m.Statistics,
 			Period:                 m.Period,
@@ -519,7 +557,27 @@ func toModelMetricConfig(metrics []*Metric) []*model.MetricConfig {
 			Delay:                  m.Delay,
 			NilToZero:              aws.BoolValue(m.NilToZero),
 			AddCloudwatchTimestamp: aws.BoolValue(m.AddCloudwatchTimestamp),
-		})
+			ExportAllDataPoints:    aws.BoolValue(m.ExportAllDataPoints),
+			Expression:             m.Expression,
+			Label:                  m.Label,
+		}
+
+		// Convert metric stats if this is a metric math expression
+		if len(m.MetricStats) > 0 {
+			mc.MetricStats = make([]model.MetricStat, 0, len(m.MetricStats))
+			for _, ms := range m.MetricStats {
+				mc.MetricStats = append(mc.MetricStats, model.MetricStat{
+					Id:         ms.Id,
+					MetricName: ms.MetricName,
+					Namespace:  ms.Namespace,
+					Dimensions: toModelDimensions(ms.Dimensions),
+					Statistic:  ms.Statistic,
+					Period:     ms.Period,
+				})
+			}
+		}
+
+		ret = append(ret, mc)
 	}
 	return ret
 }

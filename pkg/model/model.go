@@ -79,6 +79,19 @@ type MetricConfig struct {
 	Delay                  int64
 	NilToZero              bool
 	AddCloudwatchTimestamp bool
+	ExportAllDataPoints    bool
+	Expression             string
+	MetricStats            []MetricStat
+	Label                  string
+}
+
+type MetricStat struct {
+	Id         string
+	MetricName string
+	Namespace  string
+	Dimensions []Dimension
+	Statistic  string
+	Period     int64
 }
 
 type DimensionsRegexp struct {
@@ -184,8 +197,17 @@ type GetMetricDataProcessingParams struct {
 	// QueryID is a value internal to processing used for mapping results from GetMetricData their original request
 	QueryID string
 
-	// The statistic to be used to call GetMetricData
+	// The statistic to be used to call GetMetricData (used for standard metrics)
 	Statistic string
+
+	// Expression is the metric math expression (used for metric math queries)
+	Expression string
+
+	// Label is an optional label for the metric
+	Label string
+
+	// ReturnData indicates whether this query should return data (used for metric math base metrics)
+	ReturnData bool
 
 	// Fields which impact the start and endtime for
 	Period int64
@@ -196,6 +218,7 @@ type GetMetricDataProcessingParams struct {
 type MetricMigrationParams struct {
 	NilToZero              bool
 	AddCloudwatchTimestamp bool
+	ExportAllDataPoints    bool
 }
 
 type GetMetricDataResult struct {

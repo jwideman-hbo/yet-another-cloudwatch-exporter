@@ -91,20 +91,44 @@ func toModelDimensions(dimensions []types.Dimension) []model.Dimension {
 func (c client) GetMetricData(ctx context.Context, getMetricData []*model.CloudwatchData, namespace string, startTime time.Time, endTime time.Time) []cloudwatch_client.MetricDataResult {
 	metricDataQueries := make([]types.MetricDataQuery, 0, len(getMetricData))
 	for _, data := range getMetricData {
-		metricStat := &types.MetricStat{
-			Metric: &types.Metric{
-				Dimensions: toCloudWatchDimensions(data.Dimensions),
-				MetricName: &data.MetricName,
-				Namespace:  &namespace,
-			},
-			Period: aws.Int32(int32(data.GetMetricDataProcessingParams.Period)),
-			Stat:   &data.GetMetricDataProcessingParams.Statistic,
+		returnData := true
+		if data.GetMetricDataProcessingParams.ReturnData == false && data.GetMetricDataProcessingParams.Expression == "" {
+			// Only set to false if explicitly disabled and this is not the expression itself
+			returnData = false
 		}
-		metricDataQueries = append(metricDataQueries, types.MetricDataQuery{
+
+		query := types.MetricDataQuery{
 			Id:         &data.GetMetricDataProcessingParams.QueryID,
-			MetricStat: metricStat,
-			ReturnData: aws.Bool(true),
-		})
+			ReturnData: aws.Bool(returnData),
+		}
+
+		// Check if this is a metric math expression or a standard metric
+		if data.GetMetricDataProcessingParams.Expression != "" {
+			// Metric Math expression
+			query.Expression = &data.GetMetricDataProcessingParams.Expression
+			if data.GetMetricDataProcessingParams.Label != "" {
+				query.Label = &data.GetMetricDataProcessingParams.Label
+			}
+			// Set period for standalone expressions that don't reference other metrics
+			// Period is required for functions that fetch data directly from AWS services
+			if data.GetMetricDataProcessingParams.Period > 0 {
+				query.Period = aws.Int32(int32(data.GetMetricDataProcessingParams.Period))
+			}
+		} else {
+			// Standard metric
+			metricStat := &types.MetricStat{
+				Metric: &types.Metric{
+					Dimensions: toCloudWatchDimensions(data.Dimensions),
+					MetricName: &data.MetricName,
+					Namespace:  &namespace,
+				},
+				Period: aws.Int32(int32(data.GetMetricDataProcessingParams.Period)),
+				Stat:   &data.GetMetricDataProcessingParams.Statistic,
+			}
+			query.MetricStat = metricStat
+		}
+
+		metricDataQueries = append(metricDataQueries, query)
 	}
 
 	input := &cloudwatch.GetMetricDataInput{

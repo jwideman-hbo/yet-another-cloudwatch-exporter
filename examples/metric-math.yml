@@ -1,0 +1,111 @@
+apiVersion: v1alpha1
+
+# https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html
+
+discovery:
+  jobs:
+    # 1: Calculate KMS quota utilization using SERVICE_QUOTA()
+    - type: AWS/Usage
+      regions:
+        - us-east-1
+      period: 300
+      length: 300
+      metrics:
+        # Standard metric (no changes)
+        - name: CallCount
+          statistics: [Sum]
+
+        # Metric Math: Calculate quota utilization percentage
+        - name: QuotaUtilization
+          expression: "100 * m1 / SERVICE_QUOTA(m1)"
+          label: "KMS DescribeKey Quota Utilization %"
+          metricStats:
+            - id: m1
+              metricName: CallCount
+              dimensions:
+                - name: Resource
+                  value: DescribeKey
+                - name: Service
+                  value: KMS
+                - name: Type
+                  value: API
+                - name: Class
+                  value: None
+              statistic: Sum
+          period: 300
+          length: 300
+
+customNamespace:
+  # Example 2: Custom calculations across multiple metrics
+  - name: my-app-metrics
+    namespace: MyApp/Metrics
+    regions:
+      - us-east-1
+    metrics:
+      # Metric Math: Calculate error rate
+      - name: ErrorRate
+        expression: "100 * m2 / m1"
+        label: "Error Rate Percentage"
+        metricStats:
+          - id: m1
+            metricName: RequestCount
+            statistic: Sum
+          - id: m2
+            metricName: ErrorCount
+            statistic: Sum
+        period: 60
+        length: 300
+
+      # Metric Math: Calculate average response time with custom threshold
+      - name: HighResponseTimeRatio
+        expression: "IF(m1 > 1000, 1, 0)"
+        label: "High Response Time Indicator"
+        metricStats:
+          - id: m1
+            metricName: ResponseTime
+            statistic: Average
+        period: 60
+        length: 300
+
+      # Metric Math: Complex calculation combining multiple metrics
+      - name: SuccessRate
+        expression: "(m1 - m2) / m1 * 100"
+        label: "Success Rate %"
+        metricStats:
+          - id: m1
+            metricName: TotalRequests
+            statistic: Sum
+          - id: m2
+            metricName: FailedRequests
+            statistic: Sum
+        period: 300
+        length: 600
+
+  # Example 3: Using metric math with cross-namespace metrics
+  - name: combined-metrics
+    namespace: MyApp/Combined
+    regions:
+      - us-east-1
+    metrics:
+      # Metric Math: Compare metrics from different namespaces
+      - name: CrossNamespaceRatio
+        expression: "m1 / m2"
+        label: "App to DB Ratio"
+        metricStats:
+          - id: m1
+            metricName: Requests
+            namespace: MyApp/Frontend
+            statistic: Sum
+          - id: m2
+            metricName: Queries
+            namespace: MyApp/Database
+            statistic: Sum
+        period: 300
+        length: 300
+
+  # Example 4: Standalone expressions
+  - name: standalone-expressions
+    expression: "DB_PERF_INSIGHTS('RDS', 'db-1234567890ABCDEFGHIJKLMNOPQR', 'os.cpuUtilization.user.avg')"
+    label: "DBPerfInsights"
+    nilToZero: true
+

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/maxdimassociator"
@@ -433,4 +434,165 @@ func Test_getFilteredMetricDatas(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_rewriteExpressionIDs(t *testing.T) {
+	tests := []struct {
+		name        string
+		expression  string
+		metricStats []model.MetricStat
+		suffix      string
+		want        string
+	}{
+		{
+			name:       "rewrite with suffix",
+			expression: "100 * m1 / SERVICE_QUOTA(m1)",
+			metricStats: []model.MetricStat{
+				{Id: "m1"},
+			},
+			suffix: "_ws_abc",
+			want:   "100 * m1_ws_abc / SERVICE_QUOTA(m1_ws_abc)",
+		},
+		{
+			name:       "no suffix unchanged",
+			expression: "SERVICE_QUOTA(m1)",
+			metricStats: []model.MetricStat{
+				{Id: "m1"},
+			},
+			suffix: "",
+			want:   "SERVICE_QUOTA(m1)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := rewriteExpressionIDs(tt.expression, tt.metricStats, tt.suffix)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_sanitizeQueryID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"ws-abc123", "ws_abc123"},
+		{"app/my-app/12345", "app_my_app_12345"},
+	}
+	for _, tt := range tests {
+		got := sanitizeQueryID(tt.input)
+		assert.Equal(t, tt.want, got)
+	}
+}
+
+func Test_dimensionsMatchFilter(t *testing.T) {
+	discovered := []model.Dimension{
+		{Name: "Service", Value: "Prometheus"},
+		{Name: "ResourceId", Value: "ws-123"},
+	}
+
+	// Filter matches
+	filterMatch := []model.Dimension{{Name: "Service", Value: "Prometheus"}}
+	assert.True(t, dimensionsMatchFilter(discovered, filterMatch))
+
+	// Filter doesn't match
+	filterNoMatch := []model.Dimension{{Name: "Service", Value: "Lambda"}}
+	assert.False(t, dimensionsMatchFilter(discovered, filterNoMatch))
+}
+
+func Test_createMetricMathForDimensions(t *testing.T) {
+	logger := logging.NewNopLogger()
+	namespace := "AWS/Usage"
+	dimensions := []model.Dimension{
+		{Name: "Service", Value: "Prometheus"},
+		{Name: "ResourceId", Value: "ws-test123"},
+	}
+
+	metric := &model.MetricConfig{
+		Name:       "QuotaUtilization",
+		Expression: "100 * m1 / SERVICE_QUOTA(m1)",
+		Label:      "Quota Utilization %",
+		Period:     300,
+		MetricStats: []model.MetricStat{
+			{
+				Id:         "m1",
+				MetricName: "ResourceCount",
+				Statistic:  "Average",
+			},
+		},
+	}
+
+	result := createMetricMathForDimensions(logger, namespace, metric, dimensions, nopAssociator{})
+
+	// Should return base metric + expression = 2 entries
+	require.Len(t, result, 2)
+
+	// Check base metric
+	assert.Equal(t, "ResourceCount", result[0].MetricName)
+	assert.Contains(t, result[0].GetMetricDataProcessingParams.QueryID, "m1_")
+	assert.False(t, result[0].GetMetricDataProcessingParams.ReturnData)
+
+	// Check expression
+	assert.Equal(t, "QuotaUtilization", result[1].MetricName)
+	assert.Contains(t, result[1].GetMetricDataProcessingParams.Expression, "m1_")
+	assert.True(t, result[1].GetMetricDataProcessingParams.ReturnData)
+	assert.Equal(t, "Quota Utilization %", result[1].GetMetricDataProcessingParams.Label)
+}
+
+func Test_getMetricMathData(t *testing.T) {
+	logger := logging.NewNopLogger()
+	namespace := "AWS/Usage"
+
+	t.Run("standalone expression without base metrics", func(t *testing.T) {
+		metric := &model.MetricConfig{
+			Name:        "DBPerfInsights",
+			Expression:  "DB_PERF_INSIGHTS('RDS', 'db-123', 'os.cpuUtilization.user.avg')",
+			Label:       "DB Performance Insights",
+			Period:      300,
+			MetricStats: []model.MetricStat{}, // Empty - standalone
+		}
+
+		result := getMetricMathData(logger, namespace, metric)
+
+		require.Len(t, result, 1) // Only expression, no base metrics
+		assert.Equal(t, "DBPerfInsights", result[0].MetricName)
+		assert.Equal(t, "expr_dbperfinsights", result[0].GetMetricDataProcessingParams.QueryID)
+		assert.Equal(t, metric.Expression, result[0].GetMetricDataProcessingParams.Expression)
+		assert.Equal(t, "DB Performance Insights", result[0].GetMetricDataProcessingParams.Label)
+		assert.True(t, result[0].GetMetricDataProcessingParams.ReturnData)
+		assert.Empty(t, result[0].GetMetricDataProcessingParams.Statistic)
+	})
+
+	t.Run("expression with base metric", func(t *testing.T) {
+		metric := &model.MetricConfig{
+			Name:       "DayOfMonth",
+			Expression: "DAY(m1)",
+			Period:     300,
+			MetricStats: []model.MetricStat{
+				{
+					Id:         "m1",
+					MetricName: "ResourceCount",
+					Statistic:  "Average",
+				},
+			},
+		}
+
+		result := getMetricMathData(logger, namespace, metric)
+
+		require.Len(t, result, 2) // Base metric + expression
+
+		// Base metric
+		assert.Equal(t, "ResourceCount", result[0].MetricName)
+		assert.Equal(t, "m1", result[0].GetMetricDataProcessingParams.QueryID)
+		assert.False(t, result[0].GetMetricDataProcessingParams.ReturnData)
+		assert.Equal(t, "Average", result[0].GetMetricDataProcessingParams.Statistic)
+		assert.Empty(t, result[0].GetMetricDataProcessingParams.Expression)
+
+		// Expression
+		assert.Equal(t, "DayOfMonth", result[1].MetricName)
+		assert.Equal(t, "expr_dayofmonth", result[1].GetMetricDataProcessingParams.QueryID)
+		assert.True(t, result[1].GetMetricDataProcessingParams.ReturnData)
+		assert.Equal(t, "DAY(m1)", result[1].GetMetricDataProcessingParams.Expression)
+		assert.Empty(t, result[1].GetMetricDataProcessingParams.Statistic)
+	})
 }

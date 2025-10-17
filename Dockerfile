@@ -1,4 +1,4 @@
-FROM golang:1.22 as builder
+FROM golang:1.22 AS builder
 
 WORKDIR /opt/
 
@@ -7,7 +7,11 @@ RUN go mod download
 
 COPY . ./
 
-ENV GOOS linux
+# Use buildx automatic platform args for multi-arch builds
+ARG TARGETOS
+ARG TARGETARCH
+ENV GOOS=${TARGETOS:-linux}
+ENV GOARCH=${TARGETARCH}
 ENV CGO_ENABLED=0
 
 ARG VERSION

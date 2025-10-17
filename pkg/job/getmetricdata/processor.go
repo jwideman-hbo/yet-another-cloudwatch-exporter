@@ -100,7 +100,10 @@ func (p Processor) Run(ctx context.Context, namespace string, jobMetricLength, j
 
 func addQueryIDsToBatch(batch []*model.CloudwatchData) []*model.CloudwatchData {
 	for i, entry := range batch {
-		entry.GetMetricDataProcessingParams.QueryID = indexToQueryID(i)
+		// Only assign QueryID if not already set (for metric math, IDs are pre-assigned)
+		if entry.GetMetricDataProcessingParams.QueryID == "" {
+			entry.GetMetricDataProcessingParams.QueryID = indexToQueryID(i)
+		}
 	}
 
 	return batch
@@ -108,13 +111,29 @@ func addQueryIDsToBatch(batch []*model.CloudwatchData) []*model.CloudwatchData {
 
 func mapResultsToBatch(logger logging.Logger, results []cloudwatch.MetricDataResult, batch []*model.CloudwatchData) {
 	for _, entry := range results {
+		// Try to find the matching CloudwatchData entry
+		// First try by numeric ID (id_0, id_1, etc.)
 		id, err := queryIDToIndex(entry.ID)
-		if err != nil {
-			logger.Warn("GetMetricData returned unknown Query ID", "err", err, "query_id", id)
-			continue
+		var cloudwatchData *model.CloudwatchData
+
+		if err == nil && id < len(batch) {
+			// Found by numeric index
+			cloudwatchData = batch[id]
+		} else {
+			// For metric math, search by custom QueryID (e.g., m1, m2, expr_QuotaUtilization)
+			for _, data := range batch {
+				if data.GetMetricDataProcessingParams != nil && data.GetMetricDataProcessingParams.QueryID == entry.ID {
+					cloudwatchData = data
+					break
+				}
+			}
+			if cloudwatchData == nil {
+				logger.Warn("GetMetricData returned unknown Query ID", "query_id", entry.ID)
+				continue
+			}
 		}
-		if batch[id].GetMetricDataResult == nil {
-			cloudwatchData := batch[id]
+
+		if cloudwatchData.GetMetricDataResult == nil {
 			cloudwatchData.GetMetricDataResult = &model.GetMetricDataResult{
 				Statistic: cloudwatchData.GetMetricDataProcessingParams.Statistic,
 				Datapoint: entry.Datapoint,
