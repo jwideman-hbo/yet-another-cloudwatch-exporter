@@ -103,8 +103,10 @@ func (c client) GetMetricData(ctx context.Context, getMetricData []*model.Cloudw
 		}
 
 		// Check if this is a metric math expression or a standard metric
+		c.logger.Debug("GetMetricData query", "query_id", data.GetMetricDataProcessingParams.QueryID, "expression", data.GetMetricDataProcessingParams.Expression, "statistic", data.GetMetricDataProcessingParams.Statistic, "metric_name", data.MetricName)
 		if data.GetMetricDataProcessingParams.Expression != "" {
 			// Metric Math expression
+			c.logger.Debug("Creating Expression query", "query_id", data.GetMetricDataProcessingParams.QueryID, "expression", data.GetMetricDataProcessingParams.Expression)
 			query.Expression = &data.GetMetricDataProcessingParams.Expression
 			if data.GetMetricDataProcessingParams.Label != "" {
 				query.Label = &data.GetMetricDataProcessingParams.Label
@@ -116,6 +118,7 @@ func (c client) GetMetricData(ctx context.Context, getMetricData []*model.Cloudw
 			}
 		} else {
 			// Standard metric
+			c.logger.Debug("Creating MetricStat query", "query_id", data.GetMetricDataProcessingParams.QueryID, "statistic", data.GetMetricDataProcessingParams.Statistic, "metric_name", data.MetricName)
 			metricStat := &types.MetricStat{
 				Metric: &types.Metric{
 					Dimensions: toCloudWatchDimensions(data.Dimensions),
