@@ -325,13 +325,16 @@ name: <string>
 statistics:
   [ - <string> ... ]
 
-# Statistic period in seconds (Overrides job level setting)
+# Statistic period in seconds (Overrides job level setting). For Metric Stream metrics,
+# this is also the aggregation bucket size.
 [ period: <int> ]
 
-# How far back to request data for in seconds (Overrides job level setting)
+# How far back to request data for in seconds (Overrides job level setting). For Metric
+# Stream metrics, this controls the retained search window.
 [ length: <int> ]
 
-# If set it will request metrics up until `current_time - delay` (Overrides job level setting)
+# If set it will request metrics up until `current_time - delay` (Overrides job level setting).
+# Metric Stream metrics apply the same holdback before selecting a complete bucket.
 [ delay: <int> ]
 
 # Return 0 value if Cloudwatch returns no metrics at all. By default `NaN` will be reported (Overrides job level setting)
