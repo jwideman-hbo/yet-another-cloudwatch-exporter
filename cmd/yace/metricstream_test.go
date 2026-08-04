@@ -46,6 +46,18 @@ func TestConfigureMetricStreamJobsSplitsStatistics(t *testing.T) {
 	}
 }
 
+func TestMetricStreamStatsIncludesAdditionalStatistics(t *testing.T) {
+	stats := metricStreamStats([]byte(`{"count":3,"sum":20,"min":0,"max":18,"p99":17.56}`), struct {
+		SampleCount float64 `json:"sample_count"`
+		Sum         float64 `json:"sum"`
+		Minimum     float64 `json:"minimum"`
+		Maximum     float64 `json:"maximum"`
+	}{})
+	if stats["p99"].Value != 17.56 || stats["SampleCount"].Value != 3 {
+		t.Fatalf("unexpected statistics: %+v", stats)
+	}
+}
+
 func TestAggregateMetricStreamValueHonorsWindow(t *testing.T) {
 	base := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)
 	series := metricStreamValue{

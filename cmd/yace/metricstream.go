@@ -535,18 +535,29 @@ func metricStreamStats(value json.RawMessage, statisticValues struct {
 	if json.Unmarshal(value, &scalar) == nil {
 		stats["Average"] = metricStreamStatisticValue{Value: scalar, Count: 1}
 	}
-	var aggregate struct {
-		Count float64 `json:"count"`
-		Sum   float64 `json:"sum"`
-		Min   float64 `json:"min"`
-		Max   float64 `json:"max"`
-	}
-	if json.Unmarshal(value, &aggregate) == nil && aggregate.Count > 0 {
-		stats["Average"] = metricStreamStatisticValue{Value: aggregate.Sum / aggregate.Count, Count: aggregate.Count}
-		stats["Sum"] = metricStreamStatisticValue{Value: aggregate.Sum, Count: aggregate.Count}
-		stats["Minimum"] = metricStreamStatisticValue{Value: aggregate.Min, Count: aggregate.Count}
-		stats["Maximum"] = metricStreamStatisticValue{Value: aggregate.Max, Count: aggregate.Count}
-		stats["SampleCount"] = metricStreamStatisticValue{Value: aggregate.Count, Count: aggregate.Count}
+	var values map[string]json.RawMessage
+	if json.Unmarshal(value, &values) == nil {
+		var count, sum, minimum, maximum float64
+		_ = json.Unmarshal(values["count"], &count)
+		_ = json.Unmarshal(values["sum"], &sum)
+		_ = json.Unmarshal(values["min"], &minimum)
+		_ = json.Unmarshal(values["max"], &maximum)
+		if count > 0 {
+			stats["Average"] = metricStreamStatisticValue{Value: sum / count, Count: count}
+			stats["Sum"] = metricStreamStatisticValue{Value: sum, Count: count}
+			stats["Minimum"] = metricStreamStatisticValue{Value: minimum, Count: count}
+			stats["Maximum"] = metricStreamStatisticValue{Value: maximum, Count: count}
+			stats["SampleCount"] = metricStreamStatisticValue{Value: count, Count: count}
+		}
+		for statistic, rawValue := range values {
+			if statistic == "count" || statistic == "sum" || statistic == "min" || statistic == "max" {
+				continue
+			}
+			var additionalValue float64
+			if json.Unmarshal(rawValue, &additionalValue) == nil {
+				stats[statistic] = metricStreamStatisticValue{Value: additionalValue, Count: 1}
+			}
+		}
 	}
 	if statisticValues.SampleCount > 0 {
 		stats["Average"] = metricStreamStatisticValue{Value: statisticValues.Sum / statisticValues.SampleCount, Count: statisticValues.SampleCount}
