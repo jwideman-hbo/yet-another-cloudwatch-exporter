@@ -85,6 +85,68 @@ type metricStreamCollector struct {
 	access   string
 }
 
+func configureMetricStreamJobs(jobs *model.JobsConfig) {
+	for index := range jobs.DiscoveryJobs {
+		jobs.DiscoveryJobs[index].Metrics = splitMetricStreamMetrics(jobs.DiscoveryJobs[index].Metrics)
+	}
+	for index := range jobs.StaticJobs {
+		jobs.StaticJobs[index].Metrics = splitMetricStreamMetrics(jobs.StaticJobs[index].Metrics)
+	}
+	for index := range jobs.CustomNamespaceJobs {
+		jobs.CustomNamespaceJobs[index].Metrics = splitMetricStreamMetrics(jobs.CustomNamespaceJobs[index].Metrics)
+	}
+}
+
+func splitMetricStreamMetrics(metrics []*model.MetricConfig) []*model.MetricConfig {
+	result := make([]*model.MetricConfig, 0, len(metrics))
+	for _, metric := range metrics {
+		if metric.Source != "" || metric.Expression != "" || metric.ExportAllDataPoints {
+			result = append(result, metric)
+			continue
+		}
+
+		streamStatistics := make([]string, 0, len(metric.Statistics))
+		apiStatistics := make([]string, 0, len(metric.Statistics))
+		for _, statistic := range metric.Statistics {
+			if metricStreamStatisticSupported(statistic) {
+				streamStatistics = append(streamStatistics, statistic)
+			} else {
+				apiStatistics = append(apiStatistics, statistic)
+			}
+		}
+		if len(streamStatistics) == 0 || len(apiStatistics) == 0 {
+			if len(streamStatistics) > 0 {
+				streamMetric := *metric
+				streamMetric.Source = model.MetricStreamSource
+				streamMetric.Statistics = streamStatistics
+				result = append(result, &streamMetric)
+			} else {
+				result = append(result, metric)
+			}
+			continue
+		}
+
+		streamMetric := *metric
+		streamMetric.Source = model.MetricStreamSource
+		streamMetric.Statistics = streamStatistics
+		result = append(result, &streamMetric)
+
+		apiMetric := *metric
+		apiMetric.Statistics = apiStatistics
+		result = append(result, &apiMetric)
+	}
+	return result
+}
+
+func metricStreamStatisticSupported(statistic string) bool {
+	switch statistic {
+	case "Average", "Sum", "Minimum", "Maximum", "SampleCount":
+		return true
+	default:
+		return false
+	}
+}
+
 func newMetricStreamCollector(jobs model.JobsConfig, access string) *metricStreamCollector {
 	collector := &metricStreamCollector{mappings: map[string]metricStreamMapping{}, values: map[string]metricStreamValue{}, access: access}
 	collector.updateJobs(jobs)

@@ -317,7 +317,8 @@ name: <string>
 
 # Optional datapoint source. `metricStream` uses the Metric Streams endpoint and
 # retains YACE resource association and exported resource tags. Expressions cannot
-# use this source.
+# use this source. When YACE_METRIC_STREAM_ACCESS_KEY is set, standard metrics
+# use Metric Streams automatically and this field is not required.
 [ source: metricStream ]
 
 # List of statistic types, e.g. "Minimum", "Maximum", etc. (Overrides job level setting)

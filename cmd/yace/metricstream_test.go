@@ -14,6 +14,23 @@ import (
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
 )
 
+func TestConfigureMetricStreamJobsSplitsStatistics(t *testing.T) {
+	jobs := model.JobsConfig{DiscoveryJobs: []model.DiscoveryJob{{Metrics: []*model.MetricConfig{{
+		Name:       "CPUUtilization",
+		Statistics: []string{"Average", "p99"},
+	}}}}}
+	configureMetricStreamJobs(&jobs)
+	if len(jobs.DiscoveryJobs[0].Metrics) != 2 {
+		t.Fatalf("expected stream and API metrics, got %d", len(jobs.DiscoveryJobs[0].Metrics))
+	}
+	if jobs.DiscoveryJobs[0].Metrics[0].Source != model.MetricStreamSource || len(jobs.DiscoveryJobs[0].Metrics[0].Statistics) != 1 || jobs.DiscoveryJobs[0].Metrics[0].Statistics[0] != "Average" {
+		t.Fatalf("unexpected stream metric: %+v", jobs.DiscoveryJobs[0].Metrics[0])
+	}
+	if jobs.DiscoveryJobs[0].Metrics[1].Source != "" || len(jobs.DiscoveryJobs[0].Metrics[1].Statistics) != 1 || jobs.DiscoveryJobs[0].Metrics[1].Statistics[0] != "p99" {
+		t.Fatalf("unexpected API metric: %+v", jobs.DiscoveryJobs[0].Metrics[1])
+	}
+}
+
 func TestMetricStreamHandlerUpdatesMetrics(t *testing.T) {
 	logger = logging.NewLogger("logfmt", false, "test", true)
 	collector := newMetricStreamCollector(model.JobsConfig{DiscoveryJobs: []model.DiscoveryJob{{

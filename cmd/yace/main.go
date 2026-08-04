@@ -247,6 +247,10 @@ func startScraper(c *cli.Context) error {
 
 	featureFlags := c.StringSlice(enableFeatureFlag)
 	stream := newMetricStreamCollector(jobsCfg, os.Getenv("YACE_METRIC_STREAM_ACCESS_KEY"))
+	if stream.Enabled() {
+		configureMetricStreamJobs(&jobsCfg)
+		stream.UpdateJobs(jobsCfg)
+	}
 	s := NewScraper(featureFlags, stream)
 	var cache cachingFactory = v1.NewFactory(logger, jobsCfg, fips)
 	for _, featureFlag := range featureFlags {
@@ -307,6 +311,9 @@ func startScraper(c *cli.Context) error {
 		}
 
 		logger.Info("Reset clients cache")
+		if stream.Enabled() {
+			configureMetricStreamJobs(&newJobsCfg)
+		}
 		stream.UpdateJobs(newJobsCfg)
 		cache = v1.NewFactory(logger, newJobsCfg, fips)
 		for _, featureFlag := range featureFlags {
