@@ -18,16 +18,29 @@ func TestConfigureMetricStreamJobsSplitsStatistics(t *testing.T) {
 	jobs := model.JobsConfig{DiscoveryJobs: []model.DiscoveryJob{{Metrics: []*model.MetricConfig{{
 		Name:       "CPUUtilization",
 		Statistics: []string{"Average", "p99"},
+	}, {
+		Name:       "RequestCount",
+		Statistics: []string{"Average"},
+	}, {
+		Name:        "Quota",
+		Expression:  "SERVICE_QUOTA(m1)",
+		MetricStats: []model.MetricStat{{MetricName: "RequestCount"}},
 	}}}}}
 	configureMetricStreamJobs(&jobs)
-	if len(jobs.DiscoveryJobs[0].Metrics) != 2 {
-		t.Fatalf("expected stream and API metrics, got %d", len(jobs.DiscoveryJobs[0].Metrics))
+	if len(jobs.DiscoveryJobs[0].Metrics) != 4 {
+		t.Fatalf("expected split and API metrics, got %d", len(jobs.DiscoveryJobs[0].Metrics))
 	}
 	if jobs.DiscoveryJobs[0].Metrics[0].Source != model.MetricStreamSource || len(jobs.DiscoveryJobs[0].Metrics[0].Statistics) != 1 || jobs.DiscoveryJobs[0].Metrics[0].Statistics[0] != "Average" {
 		t.Fatalf("unexpected stream metric: %+v", jobs.DiscoveryJobs[0].Metrics[0])
 	}
 	if jobs.DiscoveryJobs[0].Metrics[1].Source != "" || len(jobs.DiscoveryJobs[0].Metrics[1].Statistics) != 1 || jobs.DiscoveryJobs[0].Metrics[1].Statistics[0] != "p99" {
 		t.Fatalf("unexpected API metric: %+v", jobs.DiscoveryJobs[0].Metrics[1])
+	}
+	if jobs.DiscoveryJobs[0].Metrics[2].Name != "RequestCount" || jobs.DiscoveryJobs[0].Metrics[2].Source != "" {
+		t.Fatalf("metric math base must remain on API path: %+v", jobs.DiscoveryJobs[0].Metrics[2])
+	}
+	if jobs.DiscoveryJobs[0].Metrics[3].Name != "Quota" {
+		t.Fatalf("unexpected metric math metric: %+v", jobs.DiscoveryJobs[0].Metrics[3])
 	}
 }
 

@@ -98,9 +98,23 @@ func configureMetricStreamJobs(jobs *model.JobsConfig) {
 }
 
 func splitMetricStreamMetrics(metrics []*model.MetricConfig) []*model.MetricConfig {
+	baseMetricNames := make(map[string]struct{})
+	for _, metric := range metrics {
+		if metric.Expression == "" {
+			continue
+		}
+		for _, metricStat := range metric.MetricStats {
+			baseMetricNames[metricStat.MetricName] = struct{}{}
+		}
+	}
+
 	result := make([]*model.MetricConfig, 0, len(metrics))
 	for _, metric := range metrics {
 		if metric.Source != "" || metric.Expression != "" || metric.ExportAllDataPoints {
+			result = append(result, metric)
+			continue
+		}
+		if _, usedByMetricMath := baseMetricNames[metric.Name]; usedByMetricMath {
 			result = append(result, metric)
 			continue
 		}
