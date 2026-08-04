@@ -68,13 +68,22 @@ type metricStreamMapping struct {
 	Associator maxdimassociator.Associator
 }
 
+type metricStreamSample struct {
+	Value float64
+	Count float64
+}
+
 type metricStreamValue struct {
 	Name             string
 	LabelNames       []string
 	LabelValues      []string
-	Value            float64
+	Statistic        string
+	Period           time.Duration
+	Length           time.Duration
+	Delay            time.Duration
+	NilToZero        bool
 	IncludeTimestamp bool
-	Timestamp        time.Time
+	Samples          map[int64]metricStreamSample
 }
 
 type metricStreamCollector struct {
@@ -150,6 +159,11 @@ func splitMetricStreamMetrics(metrics []*model.MetricConfig) []*model.MetricConf
 		result = append(result, &apiMetric)
 	}
 	return result
+}
+
+type metricStreamStatisticValue struct {
+	Value float64
+	Count float64
 }
 
 func metricStreamStatisticSupported(statistic string) bool {
@@ -330,29 +344,35 @@ func (c *metricStreamCollector) update(record metricStreamRecord) {
 
 		stats := metricStreamStats(record.Value, record.StatisticValues)
 		timestamp, timestampOK := metricStreamTimestamp(record.Timestamp)
+		if !timestampOK {
+			timestamp = time.Now()
+		}
 		for _, statistic := range target.Metric.Statistics {
-			value, ok := stats[statistic]
+			statisticValue, ok := stats[statistic]
 			if !ok {
 				continue
-			}
-			if !timestampOK {
-				timestamp = time.Now()
 			}
 			metricName := promutil.BuildMetricName(record.Namespace, record.MetricName, statistic)
 			key := metricName + "\x00" + strings.Join(labelValues, "\x00")
 			c.mu.Lock()
-			if current, exists := c.values[key]; exists && current.Timestamp.After(timestamp) {
-				c.mu.Unlock()
-				continue
+			series, exists := c.values[key]
+			if !exists {
+				series = metricStreamValue{
+					Name:             metricName,
+					LabelNames:       append([]string(nil), labelNames...),
+					LabelValues:      append([]string(nil), labelValues...),
+					Statistic:        statistic,
+					Period:           time.Duration(target.Metric.Period) * time.Second,
+					Length:           time.Duration(target.Metric.Length) * time.Second,
+					Delay:            time.Duration(target.Metric.Delay) * time.Second,
+					NilToZero:        target.Metric.NilToZero,
+					IncludeTimestamp: target.Metric.AddCloudwatchTimestamp,
+					Samples:          map[int64]metricStreamSample{},
+				}
 			}
-			c.values[key] = metricStreamValue{
-				Name:             metricName,
-				LabelNames:       append([]string(nil), labelNames...),
-				LabelValues:      append([]string(nil), labelValues...),
-				Value:            value,
-				IncludeTimestamp: target.Metric.AddCloudwatchTimestamp,
-				Timestamp:        timestamp,
-			}
+			series.Samples[timestamp.UnixMilli()] = metricStreamSample{Value: statisticValue.Value, Count: statisticValue.Count}
+			pruneMetricStreamSamples(&series, timestamp)
+			c.values[key] = series
 			c.mu.Unlock()
 		}
 	}
@@ -361,17 +381,112 @@ func (c *metricStreamCollector) update(record metricStreamRecord) {
 func (c *metricStreamCollector) Describe(_ chan<- *prometheus.Desc) {}
 
 func (c *metricStreamCollector) Collect(ch chan<- prometheus.Metric) {
+	now := time.Now()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, value := range c.values {
+		aggregated, timestamp, ok := aggregateMetricStreamValue(value, now)
+		if !ok {
+			continue
+		}
 		desc := prometheus.NewDesc(value.Name, "Help is not implemented yet.", value.LabelNames, nil)
-		metric := prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, value.Value, value.LabelValues...)
+		metric := prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, aggregated, value.LabelValues...)
 		if value.IncludeTimestamp {
-			ch <- prometheus.NewMetricWithTimestamp(value.Timestamp, metric)
+			ch <- prometheus.NewMetricWithTimestamp(timestamp, metric)
 		} else {
 			ch <- metric
 		}
 	}
+}
+
+func pruneMetricStreamSamples(series *metricStreamValue, newest time.Time) {
+	retention := series.Length + series.Delay + series.Period*2
+	if retention <= 0 {
+		retention = time.Hour
+	}
+	cutoff := newest.Add(-retention)
+	for timestamp := range series.Samples {
+		if time.UnixMilli(timestamp).Before(cutoff) {
+			delete(series.Samples, timestamp)
+		}
+	}
+}
+
+func aggregateMetricStreamValue(series metricStreamValue, now time.Time) (float64, time.Time, bool) {
+	if len(series.Samples) == 0 {
+		if series.IncludeTimestamp {
+			return 0, time.Time{}, false
+		}
+		if series.NilToZero {
+			return 0, time.Time{}, true
+		}
+		return 0, time.Time{}, false
+	}
+
+	end := now.Add(-series.Delay)
+	start := end.Add(-series.Length)
+	period := series.Period
+	if period <= 0 {
+		period = time.Second
+	}
+	latestBucket := end.Truncate(period).Add(-period)
+	selectedBucket := time.Time{}
+	for timestamp := range series.Samples {
+		sampleTime := time.UnixMilli(timestamp)
+		bucket := sampleTime.Truncate(period)
+		if sampleTime.Before(start) || sampleTime.After(end) || bucket.After(latestBucket) {
+			continue
+		}
+		if selectedBucket.IsZero() || bucket.After(selectedBucket) {
+			selectedBucket = bucket
+		}
+	}
+	if selectedBucket.IsZero() {
+		if series.IncludeTimestamp {
+			return 0, time.Time{}, false
+		}
+		if series.NilToZero {
+			return 0, time.Time{}, true
+		}
+		return 0, time.Time{}, false
+	}
+
+	var value float64
+	var count float64
+	var timestamp time.Time
+	initialized := false
+	for sampleTimestamp, sample := range series.Samples {
+		sampleTime := time.UnixMilli(sampleTimestamp)
+		if sampleTime.Truncate(period) != selectedBucket {
+			continue
+		}
+		if sampleTime.After(timestamp) {
+			timestamp = sampleTime
+		}
+		switch series.Statistic {
+		case "Average":
+			value += sample.Value * sample.Count
+			count += sample.Count
+		case "Sum", "SampleCount":
+			value += sample.Value
+		case "Minimum":
+			if !initialized || sample.Value < value {
+				value = sample.Value
+			}
+		case "Maximum":
+			if !initialized || sample.Value > value {
+				value = sample.Value
+			}
+		}
+		initialized = true
+	}
+	if series.Statistic == "Average" {
+		if count == 0 {
+			return 0, time.Time{}, false
+		}
+		value /= count
+	}
+	return value, timestamp, initialized
 }
 
 func metricStreamMappingKey(jobID, region, accountID string) string {
@@ -414,11 +529,11 @@ func metricStreamStats(value json.RawMessage, statisticValues struct {
 	Sum         float64 `json:"sum"`
 	Minimum     float64 `json:"minimum"`
 	Maximum     float64 `json:"maximum"`
-}) map[string]float64 {
-	stats := map[string]float64{}
+}) map[string]metricStreamStatisticValue {
+	stats := map[string]metricStreamStatisticValue{}
 	var scalar float64
 	if json.Unmarshal(value, &scalar) == nil {
-		stats["Average"] = scalar
+		stats["Average"] = metricStreamStatisticValue{Value: scalar, Count: 1}
 	}
 	var aggregate struct {
 		Count float64 `json:"count"`
@@ -427,18 +542,18 @@ func metricStreamStats(value json.RawMessage, statisticValues struct {
 		Max   float64 `json:"max"`
 	}
 	if json.Unmarshal(value, &aggregate) == nil && aggregate.Count > 0 {
-		stats["Average"] = aggregate.Sum / aggregate.Count
-		stats["Sum"] = aggregate.Sum
-		stats["Minimum"] = aggregate.Min
-		stats["Maximum"] = aggregate.Max
-		stats["SampleCount"] = aggregate.Count
+		stats["Average"] = metricStreamStatisticValue{Value: aggregate.Sum / aggregate.Count, Count: aggregate.Count}
+		stats["Sum"] = metricStreamStatisticValue{Value: aggregate.Sum, Count: aggregate.Count}
+		stats["Minimum"] = metricStreamStatisticValue{Value: aggregate.Min, Count: aggregate.Count}
+		stats["Maximum"] = metricStreamStatisticValue{Value: aggregate.Max, Count: aggregate.Count}
+		stats["SampleCount"] = metricStreamStatisticValue{Value: aggregate.Count, Count: aggregate.Count}
 	}
 	if statisticValues.SampleCount > 0 {
-		stats["Average"] = statisticValues.Sum / statisticValues.SampleCount
-		stats["Sum"] = statisticValues.Sum
-		stats["Minimum"] = statisticValues.Minimum
-		stats["Maximum"] = statisticValues.Maximum
-		stats["SampleCount"] = statisticValues.SampleCount
+		stats["Average"] = metricStreamStatisticValue{Value: statisticValues.Sum / statisticValues.SampleCount, Count: statisticValues.SampleCount}
+		stats["Sum"] = metricStreamStatisticValue{Value: statisticValues.Sum, Count: statisticValues.SampleCount}
+		stats["Minimum"] = metricStreamStatisticValue{Value: statisticValues.Minimum, Count: statisticValues.SampleCount}
+		stats["Maximum"] = metricStreamStatisticValue{Value: statisticValues.Maximum, Count: statisticValues.SampleCount}
+		stats["SampleCount"] = metricStreamStatisticValue{Value: statisticValues.SampleCount, Count: statisticValues.SampleCount}
 	}
 	return stats
 }

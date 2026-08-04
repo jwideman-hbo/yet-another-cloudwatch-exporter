@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/grafana/regexp"
 	"github.com/prometheus/client_golang/prometheus"
@@ -44,6 +46,25 @@ func TestConfigureMetricStreamJobsSplitsStatistics(t *testing.T) {
 	}
 }
 
+func TestAggregateMetricStreamValueHonorsWindow(t *testing.T) {
+	base := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)
+	series := metricStreamValue{
+		Statistic: "Average",
+		Period:    5 * time.Minute,
+		Length:    15 * time.Minute,
+		Delay:     5 * time.Minute,
+		Samples: map[int64]metricStreamSample{
+			base.UnixMilli():                      {Value: 10, Count: 2},
+			base.Add(4 * time.Minute).UnixMilli(): {Value: 20, Count: 1},
+			base.Add(5 * time.Minute).UnixMilli(): {Value: 100, Count: 1},
+		},
+	}
+	value, timestamp, ok := aggregateMetricStreamValue(series, base.Add(10*time.Minute))
+	if !ok || value != 40.0/3.0 || !timestamp.Equal(base.Add(4*time.Minute)) {
+		t.Fatalf("unexpected aggregate: value=%v timestamp=%v ok=%v", value, timestamp, ok)
+	}
+}
+
 func TestMetricStreamHandlerUpdatesMetrics(t *testing.T) {
 	logger = logging.NewLogger("logfmt", false, "test", true)
 	collector := newMetricStreamCollector(model.JobsConfig{DiscoveryJobs: []model.DiscoveryJob{{
@@ -54,7 +75,7 @@ func TestMetricStreamHandlerUpdatesMetrics(t *testing.T) {
 			Regexp:          regexp.MustCompile(`arn:aws:ec2:[^:]+:[^:]+:instance/([^/]+)$`),
 			DimensionsNames: []string{"InstanceId"},
 		}},
-		Metrics: []*model.MetricConfig{{Name: "CPUUtilization", Source: model.MetricStreamSource, Statistics: []string{"Average"}}},
+		Metrics: []*model.MetricConfig{{Name: "CPUUtilization", Source: model.MetricStreamSource, Statistics: []string{"Average"}, Period: 60, Length: 300}},
 	}}}, "secret")
 	collector.UpdateTaggedResources([]model.TaggedResourceResult{{
 		JobID:     "discovery-0",
@@ -66,7 +87,8 @@ func TestMetricStreamHandlerUpdatesMetrics(t *testing.T) {
 		}},
 		Data: []*model.TaggedResource{{ARN: "arn:aws:ec2:us-east-1:123:instance/i-123", Tags: []model.Tag{{Key: "Environment", Value: "dev"}}}},
 	}})
-	payload := []byte("{\"account_id\":\"123\",\"region\":\"us-east-1\",\"namespace\":\"AWS/EC2\",\"metric_name\":\"CPUUtilization\",\"dimensions\":{\"InstanceId\":\"i-123\"},\"timestamp\":1700000000000,\"value\":{\"sum\":12,\"count\":2,\"min\":4,\"max\":8}}\n")
+	timestamp := time.Now().Add(-time.Minute).UnixMilli()
+	payload := []byte(fmt.Sprintf("{\"account_id\":\"123\",\"region\":\"us-east-1\",\"namespace\":\"AWS/EC2\",\"metric_name\":\"CPUUtilization\",\"dimensions\":{\"InstanceId\":\"i-123\"},\"timestamp\":%d,\"value\":{\"sum\":12,\"count\":2,\"min\":4,\"max\":8}}\n", timestamp))
 	data := base64.StdEncoding.EncodeToString(payload)
 	body, _ := json.Marshal(metricStreamRequest{RequestID: "request-1", Timestamp: 1700000001000, Records: []metricStreamEntry{{Data: data}}})
 
