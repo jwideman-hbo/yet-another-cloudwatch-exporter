@@ -206,7 +206,7 @@ func (c *metricStreamCollector) update(record metricStreamRecord) {
 		}
 
 		name := target.Name
-		var resourceTags []model.Tag
+		resource := &model.TaggedResource{ARN: name}
 		if target.JobID != "" {
 			mapping, ok := mappings[metricStreamMappingKey(target.JobID, record.Region, record.AccountID)]
 			if ok {
@@ -214,16 +214,17 @@ func (c *metricStreamCollector) update(record metricStreamRecord) {
 				for dimension, value := range record.Dimensions {
 					cwMetric.Dimensions = append(cwMetric.Dimensions, model.Dimension{Name: dimension, Value: value})
 				}
-				resource, skip := mapping.Associator.AssociateMetricToResource(&cwMetric)
+				matchedResource, skip := mapping.Associator.AssociateMetricToResource(&cwMetric)
 				if skip {
 					continue
 				}
-				if resource != nil {
+				if matchedResource != nil {
+					resource = matchedResource
 					name = resource.ARN
-					resourceTags = resource.MetricTags(target.ExportedTags)
 				}
 			}
 		}
+		resourceTags := resource.MetricTags(target.ExportedTags)
 
 		labels := map[string]string{"account_id": record.AccountID, "name": name, "region": record.Region}
 		for dimension, value := range record.Dimensions {
