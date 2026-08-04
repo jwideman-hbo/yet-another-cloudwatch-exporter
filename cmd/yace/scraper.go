@@ -18,6 +18,7 @@ import (
 type scraper struct {
 	registry     atomic.Pointer[prometheus.Registry]
 	featureFlags []string
+	stream       *metricStreamCollector
 }
 
 type cachingFactory interface {
@@ -26,10 +27,11 @@ type cachingFactory interface {
 	Clear()
 }
 
-func NewScraper(featureFlags []string) *scraper { //nolint:revive
+func NewScraper(featureFlags []string, stream *metricStreamCollector) *scraper { //nolint:revive
 	s := &scraper{
 		registry:     atomic.Pointer[prometheus.Registry]{},
 		featureFlags: featureFlags,
+		stream:       stream,
 	}
 	s.registry.Store(prometheus.NewRegistry())
 	return s
@@ -93,6 +95,10 @@ func (s *scraper) scrape(ctx context.Context, logger logging.Logger, jobsCfg mod
 		exporter.TaggingAPIConcurrency(tagConcurrency),
 	}
 
+	if s.stream != nil {
+		options = append(options, exporter.MetricStreamTagSink(s.stream))
+	}
+
 	if cloudwatchConcurrency.PerAPILimitEnabled {
 		options = append(options, exporter.CloudWatchPerAPILimitConcurrency(cloudwatchConcurrency.ListMetrics, cloudwatchConcurrency.GetMetricData, cloudwatchConcurrency.GetMetricStatistics))
 	} else {
@@ -107,6 +113,11 @@ func (s *scraper) scrape(ctx context.Context, logger logging.Logger, jobsCfg mod
 		cache,
 		options...,
 	)
+	if s.stream != nil {
+		if err := newRegistry.Register(s.stream); err != nil {
+			logger.Warn("Could not register metric stream collector")
+		}
+	}
 	if err != nil {
 		logger.Error(err, "error updating metrics")
 	}

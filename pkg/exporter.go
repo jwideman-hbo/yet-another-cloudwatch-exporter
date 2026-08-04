@@ -58,6 +58,11 @@ type options struct {
 	taggingAPIConcurrency int
 	featureFlags          featureFlagsMap
 	cloudwatchConcurrency cloudwatch.ConcurrencyConfig
+	taggedResourceSink    TaggedResourceSink
+}
+
+type TaggedResourceSink interface {
+	UpdateTaggedResources([]model.TaggedResourceResult)
 }
 
 // IsFeatureEnabled implements the FeatureFlags interface, allowing us to inject the options-configure feature flags in the rest of the code.
@@ -67,6 +72,13 @@ func (ff featureFlagsMap) IsFeatureEnabled(flag string) bool {
 }
 
 type OptionsFunc func(*options) error
+
+func MetricStreamTagSink(sink TaggedResourceSink) OptionsFunc {
+	return func(o *options) error {
+		o.taggedResourceSink = sink
+		return nil
+	}
+}
 
 func MetricsPerQuery(metricsPerQuery int) OptionsFunc {
 	return func(o *options) error {
@@ -189,6 +201,9 @@ func UpdateMetrics(
 		options.cloudwatchConcurrency,
 		options.taggingAPIConcurrency,
 	)
+	if options.taggedResourceSink != nil {
+		options.taggedResourceSink.UpdateTaggedResources(tagsData)
+	}
 
 	metrics, observedMetricLabels, err := promutil.BuildMetrics(cloudwatchData, options.labelsSnakeCase, logger)
 	if err != nil {

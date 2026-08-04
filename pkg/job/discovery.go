@@ -99,6 +99,9 @@ func getMetricDataForQueries(
 	var standardMetrics []*model.MetricConfig
 	var metricMathExpressions []*model.MetricConfig
 	for _, metric := range discoveryJob.Metrics {
+		if metric.Source == model.MetricStreamSource {
+			continue
+		}
 		if metric.Expression != "" {
 			metricMathExpressions = append(metricMathExpressions, metric)
 		} else {

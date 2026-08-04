@@ -43,10 +43,17 @@ func getMetricDataForQueriesForCustomNamespace(
 	mux := &sync.Mutex{}
 	var getMetricDatas []*model.CloudwatchData
 
-	var wg sync.WaitGroup
-	wg.Add(len(customNamespaceJob.Metrics))
-
+	metrics := make([]*model.MetricConfig, 0, len(customNamespaceJob.Metrics))
 	for _, metric := range customNamespaceJob.Metrics {
+		if metric.Source != model.MetricStreamSource {
+			metrics = append(metrics, metric)
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(metrics))
+
+	for _, metric := range metrics {
 		// For every metric of the job get the full list of metrics.
 		// This includes, for this metric the possible combinations
 		// of dimensions and value of dimensions with data.

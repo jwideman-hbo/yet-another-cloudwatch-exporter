@@ -246,7 +246,8 @@ func startScraper(c *cli.Context) error {
 	}
 
 	featureFlags := c.StringSlice(enableFeatureFlag)
-	s := NewScraper(featureFlags)
+	stream := newMetricStreamCollector(jobsCfg, os.Getenv("YACE_METRIC_STREAM_ACCESS_KEY"))
+	s := NewScraper(featureFlags, stream)
 	var cache cachingFactory = v1.NewFactory(logger, jobsCfg, fips)
 	for _, featureFlag := range featureFlags {
 		if featureFlag == config.AwsSdkV2 {
@@ -273,6 +274,9 @@ func startScraper(c *cli.Context) error {
 	}
 
 	mux.HandleFunc("/metrics", s.makeHandler())
+	if stream.Enabled() {
+		mux.HandleFunc("/firehose", stream.Handler)
+	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		pprofLink := ""
@@ -303,6 +307,7 @@ func startScraper(c *cli.Context) error {
 		}
 
 		logger.Info("Reset clients cache")
+		stream.UpdateJobs(newJobsCfg)
 		cache = v1.NewFactory(logger, newJobsCfg, fips)
 		for _, featureFlag := range featureFlags {
 			if featureFlag == config.AwsSdkV2 {

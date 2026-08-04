@@ -9,6 +9,7 @@ import (
 const (
 	DefaultPeriodSeconds = int64(300)
 	DefaultLengthSeconds = int64(300)
+	MetricStreamSource   = "metricStream"
 )
 
 type JobsConfig struct {
@@ -73,6 +74,7 @@ type Role struct {
 
 type MetricConfig struct {
 	Name                   string
+	Source                 string
 	Statistics             []string
 	Period                 int64
 	Length                 int64
@@ -153,8 +155,13 @@ type CloudwatchMetricResult struct {
 }
 
 type TaggedResourceResult struct {
-	Context *ScrapeContext
-	Data    []*TaggedResource
+	Context           *ScrapeContext
+	Data              []*TaggedResource
+	JobID             string
+	JobType           string
+	Region            string
+	AccountID         string
+	DimensionsRegexps []DimensionsRegexp
 }
 
 type ScrapeContext struct {

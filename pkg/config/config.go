@@ -80,17 +80,18 @@ type CustomNamespace struct {
 }
 
 type Metric struct {
-	Name                   string        `yaml:"name"`
-	Statistics             []string      `yaml:"statistics"`
-	Period                 int64         `yaml:"period"`
-	Length                 int64         `yaml:"length"`
-	Delay                  int64         `yaml:"delay"`
-	NilToZero              *bool         `yaml:"nilToZero"`
-	AddCloudwatchTimestamp *bool         `yaml:"addCloudwatchTimestamp"`
-	ExportAllDataPoints    *bool         `yaml:"exportAllDataPoints"`
-	Expression             string        `yaml:"expression"`
-	MetricStats            []MetricStat  `yaml:"metricStats"`
-	Label                  string        `yaml:"label"`
+	Name                   string       `yaml:"name"`
+	Source                 string       `yaml:"source"`
+	Statistics             []string     `yaml:"statistics"`
+	Period                 int64        `yaml:"period"`
+	Length                 int64        `yaml:"length"`
+	Delay                  int64        `yaml:"delay"`
+	NilToZero              *bool        `yaml:"nilToZero"`
+	AddCloudwatchTimestamp *bool        `yaml:"addCloudwatchTimestamp"`
+	ExportAllDataPoints    *bool        `yaml:"exportAllDataPoints"`
+	Expression             string       `yaml:"expression"`
+	MetricStats            []MetricStat `yaml:"metricStats"`
+	Label                  string       `yaml:"label"`
 }
 
 type MetricStat struct {
@@ -327,11 +328,17 @@ func (j *Static) validateStaticJob(logger logging.Logger, jobIdx int) error {
 }
 
 func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent string, discovery *JobLevelMetricFields) error {
+	if m.Source != "" && m.Source != model.MetricStreamSource {
+		return fmt.Errorf("Metric [%s/%d] in %v: unsupported source %q", m.Name, metricIdx, parent, m.Source)
+	}
 	if m.Name == "" {
 		return fmt.Errorf("Metric [%s/%d] in %v: Name should not be empty", m.Name, metricIdx, parent)
 	}
 
 	isMetricMath := m.Expression != ""
+	if isMetricMath && m.Source == model.MetricStreamSource {
+		return fmt.Errorf("Metric [%s/%d] in %v: metricStream source cannot be used with expressions", m.Name, metricIdx, parent)
+	}
 
 	if isMetricMath {
 		if len(m.Statistics) > 0 {
@@ -362,6 +369,18 @@ func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent str
 			mStatistics = discovery.Statistics
 		} else if !isMetricMath {
 			return fmt.Errorf("Metric [%s/%d] in %v: Statistics should not be empty", m.Name, metricIdx, parent)
+		}
+	}
+	if m.Source == model.MetricStreamSource {
+		if aws.BoolValue(m.ExportAllDataPoints) {
+			return fmt.Errorf("Metric [%s/%d] in %v: exportAllDataPoints is not supported by metric streams", m.Name, metricIdx, parent)
+		}
+		for _, statistic := range mStatistics {
+			switch statistic {
+			case "Average", "Sum", "Minimum", "Maximum", "SampleCount":
+			default:
+				return fmt.Errorf("Metric [%s/%d] in %v: statistic %q is not supported by metric streams", m.Name, metricIdx, parent, statistic)
+			}
 		}
 	}
 
@@ -551,6 +570,7 @@ func toModelMetricConfig(metrics []*Metric) []*model.MetricConfig {
 	for _, m := range metrics {
 		mc := &model.MetricConfig{
 			Name:                   m.Name,
+			Source:                 m.Source,
 			Statistics:             m.Statistics,
 			Period:                 m.Period,
 			Length:                 m.Length,

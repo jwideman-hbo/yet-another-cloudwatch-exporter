@@ -315,6 +315,11 @@ This allows for a specific setting to override a general setting.
 # CloudWatch metric name
 name: <string>
 
+# Optional datapoint source. `metricStream` uses the Metric Streams endpoint and
+# retains YACE resource association and exported resource tags. Expressions cannot
+# use this source.
+[ source: metricStream ]
+
 # List of statistic types, e.g. "Minimum", "Maximum", etc. (Overrides job level setting)
 statistics:
   [ - <string> ... ]

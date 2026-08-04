@@ -21,6 +21,9 @@ func runStaticJob(
 
 	for j := range resource.Metrics {
 		metric := resource.Metrics[j]
+		if metric.Source == model.MetricStreamSource {
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

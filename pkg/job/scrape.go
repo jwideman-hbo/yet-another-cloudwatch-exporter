@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients"
@@ -11,6 +12,15 @@ import (
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
 )
+
+func hasMetricStreamMetrics(job model.DiscoveryJob) bool {
+	for _, metric := range job.Metrics {
+		if metric.Source == model.MetricStreamSource {
+			return true
+		}
+	}
+	return false
+}
 
 func ScrapeAwsData(
 	ctx context.Context,
@@ -26,11 +36,12 @@ func ScrapeAwsData(
 	awsInfoData := make([]model.TaggedResourceResult, 0)
 	var wg sync.WaitGroup
 
-	for _, discoveryJob := range jobsCfg.DiscoveryJobs {
+	for jobIndex, discoveryJob := range jobsCfg.DiscoveryJobs {
+		jobID := fmt.Sprintf("discovery-%d", jobIndex)
 		for _, role := range discoveryJob.Roles {
 			for _, region := range discoveryJob.Regions {
 				wg.Add(1)
-				go func(discoveryJob model.DiscoveryJob, region string, role model.Role) {
+				go func(discoveryJob model.DiscoveryJob, region string, role model.Role, jobID string) {
 					defer wg.Done()
 					jobLogger := logger.With("job_type", discoveryJob.Type, "region", region, "arn", role.RoleArn)
 					accountID, err := factory.GetAccountClient(region, role).GetAccount(ctx)
@@ -44,6 +55,9 @@ func ScrapeAwsData(
 					gmdProcessor := getmetricdata.NewDefaultProcessor(logger, cloudwatchClient, metricsPerQuery, cloudwatchConcurrency.GetMetricData)
 					resources, metrics := runDiscoveryJob(ctx, jobLogger, discoveryJob, region, factory.GetTaggingClient(region, role, taggingAPIConcurrency), cloudwatchClient, gmdProcessor)
 					addDataToOutput := len(metrics) != 0
+					if hasMetricStreamMetrics(discoveryJob) {
+						addDataToOutput = addDataToOutput || len(resources) != 0
+					}
 					if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.AlwaysReturnInfoMetrics) {
 						addDataToOutput = addDataToOutput || len(resources) != 0
 					}
@@ -58,7 +72,12 @@ func ScrapeAwsData(
 							Data:    metrics,
 						}
 						resourceResult := model.TaggedResourceResult{
-							Data: resources,
+							Data:              resources,
+							JobID:             jobID,
+							JobType:           discoveryJob.Type,
+							Region:            region,
+							AccountID:         accountID,
+							DimensionsRegexps: discoveryJob.DimensionsRegexps,
 						}
 						if discoveryJob.IncludeContextOnInfoMetrics {
 							resourceResult.Context = sc
@@ -69,7 +88,7 @@ func ScrapeAwsData(
 						cwData = append(cwData, metricResult)
 						mux.Unlock()
 					}
-				}(discoveryJob, region, role)
+				}(discoveryJob, region, role, jobID)
 			}
 		}
 	}
