@@ -191,12 +191,27 @@ func (i ownerResourceIndex) ownerTags(data *model.CloudwatchData, namespace stri
 		return []model.Tag{}
 	}
 	candidate := ""
+	maxDimensions := 0
 	for patternIndex, pattern := range i.mapping.patterns {
 		key, ok := ownerDimensionKey(pattern, data.Dimensions)
 		if !ok {
 			continue
 		}
-		for _, resourceARN := range i.dimensions[patternIndex][key] {
+		dimensionCount := 0
+		for _, name := range pattern.SubexpNames()[1:] {
+			if name != "" {
+				dimensionCount++
+			}
+		}
+		resources := i.dimensions[patternIndex][key]
+		if len(resources) == 0 || dimensionCount < maxDimensions {
+			continue
+		}
+		if dimensionCount > maxDimensions {
+			candidate = ""
+			maxDimensions = dimensionCount
+		}
+		for _, resourceARN := range resources {
 			if candidate != "" && candidate != resourceARN {
 				return []model.Tag{}
 			}

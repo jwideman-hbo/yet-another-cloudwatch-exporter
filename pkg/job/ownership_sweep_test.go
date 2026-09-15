@@ -112,6 +112,22 @@ func TestRDSCaseAliasAndConflictingAliases(t *testing.T) {
 	}
 }
 
+func TestMostSpecificResourceIdentityWins(t *testing.T) {
+	mapping, _ := customNamespaceOwnerMapping("AWS/ApiGateway")
+	apiTags := []model.Tag{{Key: "omd_service", Value: "api"}}
+	stageTags := ownerTags()
+	resources := []*model.TaggedResource{
+		{ARN: "arn:aws:apigateway:us-east-1::/apis/example", Tags: apiTags},
+		{ARN: "arn:aws:apigateway:us-east-1::/apis/example/stages/prod", Tags: stageTags},
+	}
+	index := newOwnerResourceIndex(mapping, resources, "123456789012", "us-east-1")
+	data := ownerRequest("AWS/ApiGateway", "ApiId", "example")
+	data.Dimensions = append(data.Dimensions, model.Dimension{Name: "Stage", Value: "prod"})
+	if !reflect.DeepEqual(index.ownerTags(data, data.Namespace), stageTags) {
+		t.Fatal("less-specific API resource made an exact stage identity ambiguous")
+	}
+}
+
 func TestAmbiguousResourceNamesStayUnallocated(t *testing.T) {
 	mapping, _ := customNamespaceOwnerMapping("AWS/WAFV2")
 	resources := []*model.TaggedResource{
