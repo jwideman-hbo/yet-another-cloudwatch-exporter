@@ -17,6 +17,10 @@ func TestSweptCustomNamespaceMappings(t *testing.T) {
 		value     string
 		resource  string
 	}{
+		{"AWS/CertificateManager", "CertificateArn", "arn:aws:acm:us-east-1:123456789012:certificate/example", "arn:aws:acm:us-east-1:123456789012:certificate/example"},
+		{"AWS/Prometheus", "Workspace", "ws-example", "arn:aws:aps:us-east-1:123456789012:workspace/ws-example"},
+		{"AWS/DMS", "ReplicationInstanceExternalResourceId", "example", "arn:aws:dms:us-east-1:123456789012:rep:example"},
+		{"AWS/DDoSProtection", "ResourceArn", "arn:aws:ec2:us-east-1:123456789012:eip-allocation/eipalloc-example", "arn:aws:ec2:us-east-1:123456789012:eip-allocation/eipalloc-example"},
 		{"AWS/DAX", "ClusterId", "example", "arn:aws:dax:us-east-1:123456789012:cache/example"},
 		{"AWS/EKS", "ClusterName", "example", "arn:aws:eks:us-east-1:123456789012:cluster/example"},
 		{"AWS/OSIS", "PipelineName", "example", "arn:aws:osis:us-east-1:123456789012:pipeline/example"},
