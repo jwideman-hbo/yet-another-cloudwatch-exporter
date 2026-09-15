@@ -31,6 +31,7 @@ func runDiscoveryJob(
 	clientTag tagging.Client,
 	clientCloudwatch cloudwatch.Client,
 	gmdProcessor getMetricDataProcessor,
+	accountID string,
 ) ([]*model.TaggedResource, []*model.CloudwatchData) {
 	logger.Debug("Get tagged resources")
 
@@ -54,6 +55,8 @@ func runDiscoveryJob(
 		logger.Info("No metrics data found")
 		return resources, nil
 	}
+
+	enrichDiscoveryOwners(ctx, svc.Namespace, accountID, region, getMetricDatas, resources)
 
 	jobLength := getLargestLengthForMetrics(job.Metrics)
 	getMetricDatas, err = gmdProcessor.Run(ctx, svc.Namespace, jobLength, job.Delay, job.RoundingPeriod, getMetricDatas)

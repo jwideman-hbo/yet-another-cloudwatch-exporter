@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
@@ -30,6 +31,13 @@ type ownerTagClient struct {
 func (c *ownerTagClient) GetResources(ctx context.Context, job model.DiscoveryJob, region string) ([]*model.TaggedResource, error) {
 	c.calls++
 	c.jobType, c.region = job.Type, region
+	_, c.bounded = ctx.Deadline()
+	return c.resources, c.err
+}
+
+func (c *ownerTagClient) GetResourcesForOwner(ctx context.Context, resourceTypes []string, region string) ([]*model.TaggedResource, error) {
+	c.calls++
+	c.jobType, c.region = strings.Join(resourceTypes, ","), region
 	_, c.bounded = ctx.Deadline()
 	return c.resources, c.err
 }
