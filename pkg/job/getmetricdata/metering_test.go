@@ -90,6 +90,22 @@ func TestMeteringMissingAndConflictingOwners(t *testing.T) {
 	}
 }
 
+func TestMeteringUsesResolvedOwnerTagsWithoutExportedTagFallback(t *testing.T) {
+	data := meteringData("Average")
+	data.OwnerTags = []model.Tag{{Key: "omd_service", Value: "resolved-service"}}
+	counts := countMetering([]*model.CloudwatchData{data})
+	key := meteringKey{owner{"_unallocated", "resolved-service", "_unallocated"}, "CPUUtilization", "metric"}
+	if counts[key] != (meteringCount{1, 1}) {
+		t.Fatalf("resolved ownership was not used: %+v", counts)
+	}
+	data.OwnerTags = []model.Tag{}
+	counts = countMetering([]*model.CloudwatchData{data})
+	key.owner = owner{"_unallocated", "_unallocated", "_unallocated"}
+	if counts[key] != (meteringCount{1, 1}) {
+		t.Fatalf("unresolved ownership fell back to exported tags: %+v", counts)
+	}
+}
+
 func TestMeteringExpressionsAreNotPriced(t *testing.T) {
 	data := meteringData("")
 	data.GetMetricDataProcessingParams.Expression = "SEARCH('...', 'Average', 60)"

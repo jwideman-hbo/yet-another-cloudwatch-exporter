@@ -161,6 +161,7 @@ type CloudwatchData struct {
 	ResourceName string
 	Namespace    string
 	Tags         []Tag
+	OwnerTags    []Tag
 	Dimensions   []Dimension
 	// GetMetricDataProcessingParams includes necessary fields to run GetMetricData
 	GetMetricDataProcessingParams *GetMetricDataProcessingParams

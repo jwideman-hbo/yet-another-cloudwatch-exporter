@@ -76,7 +76,11 @@ func countMetering(batch []*model.CloudwatchData) map[meteringKey]meteringCount 
 	counts := map[meteringKey]meteringCount{}
 	identities := map[string]identityCount{}
 	for _, data := range batch {
-		key := meteringKey{owner: metricOwner(data.Tags), metric: data.MetricName, kind: "metric"}
+		tags := data.Tags
+		if data.OwnerTags != nil {
+			tags = data.OwnerTags
+		}
+		key := meteringKey{owner: metricOwner(tags), metric: data.MetricName, kind: "metric"}
 		params := data.GetMetricDataProcessingParams
 		if params.Expression != "" {
 			key.kind = "expression"

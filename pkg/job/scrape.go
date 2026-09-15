@@ -6,6 +6,7 @@ import (
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/getmetricdata"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
@@ -129,7 +130,11 @@ func ScrapeAwsData(
 						gmdClient = getmetricdata.NewMeteredClient(gmdClient, accountID, region)
 					}
 					gmdProcessor := getmetricdata.NewDefaultProcessor(logger, gmdClient, metricsPerQuery, cloudwatchConcurrency.GetMetricData)
-					metrics := runCustomNamespaceJob(ctx, jobLogger, customNamespaceJob, cloudwatchClient, gmdProcessor)
+					var ownerTagClient tagging.Client
+					if _, supported := customNamespaceOwnerMapping(customNamespaceJob.Namespace); supported && config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+						ownerTagClient = factory.GetTaggingClient(region, role, taggingAPIConcurrency)
+					}
+					metrics := runCustomNamespaceJob(ctx, jobLogger, customNamespaceJob, cloudwatchClient, gmdProcessor, ownerTagClient, accountID, region)
 					metricResult := model.CloudwatchMetricResult{
 						Context: &model.ScrapeContext{
 							Region:     region,

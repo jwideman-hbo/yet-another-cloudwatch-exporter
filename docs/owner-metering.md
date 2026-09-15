@@ -9,9 +9,27 @@ This opt-in instrumentation supports CEA-114135 analysis. It changes neither col
 
 Both counters carry `target_account_id`, `target_region`, `cloudwatch_namespace`, `cloudwatch_metric_name`, `owner_business_service`, `owner_service`, `owner_component`, `query_kind`, and `outcome`. Target account is resolved through the existing account client, not inferred from the exporter's hosting account. It still needs to be reconciled to the account actually billed in CUR for the deployed cross-account access model.
 
-Only resource OMD tags on the request are used. Export the three OMD tags with `exportedTagsOnMetrics` for discovery jobs. Missing tag fields are `_unallocated`; conflicting owners for the same metric identity become wholly unallocated. Custom namespace metrics without associated tags remain unallocated. Exporter/pod OMD must never be used as a customer fallback. Tags describe resource owners, not people querying the metrics.
+Only resource OMD tags on the request are used. Export the three OMD tags with `exportedTagsOnMetrics` for discovery jobs. Missing tag fields are `_unallocated`; conflicting owners for the same metric identity become wholly unallocated. Supported custom namespaces resolve request-only owner tags as described below; other custom namespace metrics without associated tags remain unallocated. Exporter/pod OMD must never be used as a customer fallback. Tags describe resource owners, not people querying the metrics.
 
 These are aggregate owner/metric-family counters, not per-resource counters. They do not export ARNs, CloudWatch dimension values, query IDs, or expression text. Series cardinality still grows with owner tuples, metric names, targets, and outcome, so measure it before expanding deployment. Counter label combinations persist for the exporter process lifetime.
+
+## Custom-namespace owner resolution
+
+With `owner-metering` enabled, these custom namespaces resolve ownership before requests reach the batch processor:
+
+| Metric namespace | Raw CloudWatch dimension | Resource lookup |
+| --- | --- | --- |
+| `AmazonMWAA` | `Environment` | `airflow` resources, exact `environment/<name>` ARN |
+| `AWS/MWAA` | `Environment` | Same MWAA environment lookup |
+| `AWS/KinesisAnalytics` | `Application` | `kinesisanalytics:application` resources, exact `application/<name>` ARN |
+
+These dimensions appear as `dimension_Environment` and `dimension_Application` in exported Prometheus metrics. Resolution uses the existing tagging client, scoped to the same assumed role/account and region as collection. It performs one paginated resource lookup per eligible custom job invocation, not one call per statistic or resource. There is a ten-second lookup deadline; no stale cross-poll ownership cache is used. Confirm the runtime role's `tag:GetResources` permissions and pagination latency in the dev pilot. The existing tagging client supports both SDK paths; no new AWS SDK dependency or service-specific API is added.
+
+The resolver requires exact account, region, ARN service/type and resource-name matches. It copies only the three OMD ownership fields. Partial tags remain partial; ambiguous resource results, conflicting dimensions, unmatched resources, lookup failures/timeouts and expressions remain unallocated. It does not infer owners from DAG filenames, account names, workload names, or prefixes. Cross-namespace metric-math entries are not assigned the job namespace's resource owner.
+
+Resolved tags are stored in `CloudwatchData.OwnerTags`, separately from exported `Tags`. The request counters use these tags; the existing `aws_*` metric labels, names and values are unchanged. This deliberately avoids changing ServiceMonitor relabeling or workspace routing. Consequently the raw-series coverage dashboard can still report missing tags for these metrics even while the new request counters have owner attribution. Populating resource OMD on the ordinary exported series is a separate behavioral change and is not included here.
+
+If enrichment fails, GMD collection continues and its requests are counted as unallocated. Unsupported namespaces perform no additional lookup. This does not repair resources genuinely missing `omd_component`, Athena tag-export configuration, unmatched discovery metrics or account-wide/shared metrics. It does not claim to close the entire observed metadata gap.
 
 ## Billing limitations
 

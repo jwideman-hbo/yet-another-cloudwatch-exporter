@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
 )
@@ -15,12 +16,16 @@ func runCustomNamespaceJob(
 	job model.CustomNamespaceJob,
 	clientCloudwatch cloudwatch.Client,
 	gmdProcessor getMetricDataProcessor,
+	ownerTagClient tagging.Client,
+	accountID, region string,
 ) []*model.CloudwatchData {
 	cloudwatchDatas := getMetricDataForQueriesForCustomNamespace(ctx, job, clientCloudwatch, logger)
 	if len(cloudwatchDatas) == 0 {
 		logger.Debug("No metrics data found")
 		return nil
 	}
+
+	enrichCustomNamespaceOwners(ctx, logger, job.Namespace, accountID, region, cloudwatchDatas, ownerTagClient)
 
 	jobLength := getLargestLengthForMetrics(job.Metrics)
 	var err error
