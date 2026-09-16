@@ -21,13 +21,10 @@ func (f ownerExclusionFlags) IsFeatureEnabled(flag string) bool {
 
 func exclusionRequest(namespace, metric string, tags []model.Tag) *model.CloudwatchData {
 	return &model.CloudwatchData{
-		Namespace:  namespace,
-		MetricName: metric,
-		OwnerTags:  tags,
-		GetMetricDataProcessingParams: &model.GetMetricDataProcessingParams{
-			Expression: "",
-			ReturnData: true,
-		},
+		Namespace:                     namespace,
+		MetricName:                    metric,
+		OwnerTags:                     tags,
+		GetMetricDataProcessingParams: &model.GetMetricDataProcessingParams{},
 	}
 }
 
@@ -96,20 +93,6 @@ func TestOwnerMetricExclusionsNeverMatchMissingOrConflictingSelectedTags(t *test
 	got := applyOwnerMetricExclusions(ctx, "123456789012", "us-east-1", rules, []*model.CloudwatchData{missing, wrongSource, unknown, unallocated, conflicting})
 	if len(got) != 5 {
 		t.Fatal("missing, exported-only, or conflicting owner tags matched an exclusion")
-	}
-}
-
-func TestOwnerMetricExclusionsPreserveExpressionsAndDependencies(t *testing.T) {
-	ctx := config.CtxWithFlags(context.Background(), ownerExclusionFlags{config.OwnerMetering: true, config.OwnerMetricExclusions: true})
-	rules := []model.OwnerMetricExclusion{ownerExclusion(`.*`, `.*`, "", "", `.*`)}
-	expression := exclusionRequest("AWS/EC2", "Calculated", ownerTags())
-	expression.GetMetricDataProcessingParams.Expression = "m1/m2"
-	dependency := exclusionRequest("AWS/EC2", "CPUUtilization", ownerTags())
-	dependency.GetMetricDataProcessingParams.ReturnData = false
-	direct := exclusionRequest("AWS/EC2", "CPUUtilization", ownerTags())
-	got := applyOwnerMetricExclusions(ctx, "123456789012", "us-east-1", rules, []*model.CloudwatchData{expression, dependency, direct})
-	if len(got) != 2 || got[0] != expression || got[1] != dependency {
-		t.Fatal("exclusion removed an expression dependency or retained a direct request")
 	}
 }
 

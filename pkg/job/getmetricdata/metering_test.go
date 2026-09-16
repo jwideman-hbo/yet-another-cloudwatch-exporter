@@ -36,7 +36,7 @@ func TestMeteringStatisticBoundaries(t *testing.T) {
 				batch[i] = meteringData(fmt.Sprintf("p%d", i))
 			}
 			counts := countMetering(batch)
-			key := meteringKey{owner{"commerce", "payments", "processor"}, "CPUUtilization", "metric"}
+			key := meteringKey{owner{"commerce", "payments", "processor"}, "CPUUtilization"}
 			if got := counts[key]; got != (meteringCount{size, (size + 4) / 5}) {
 				t.Fatalf("unexpected count: %+v", got)
 			}
@@ -52,7 +52,7 @@ func TestMeteringIdentityAndDimensionOrder(t *testing.T) {
 	d.GetMetricDataProcessingParams.Period = 300
 	before := append([]model.Dimension(nil), a.Dimensions...)
 	counts := countMetering([]*model.CloudwatchData{a, b, c, d})
-	key := meteringKey{owner{"commerce", "payments", "processor"}, "CPUUtilization", "metric"}
+	key := meteringKey{owner{"commerce", "payments", "processor"}, "CPUUtilization"}
 	if counts[key] != (meteringCount{4, 3}) {
 		t.Fatalf("unexpected count: %+v", counts)
 	}
@@ -84,7 +84,7 @@ func TestMeteringMissingAndConflictingOwners(t *testing.T) {
 	a, b := meteringData("Average"), meteringData("Maximum")
 	b.Tags = nil
 	counts := countMetering([]*model.CloudwatchData{a, b})
-	key := meteringKey{owner{"_unallocated", "_unallocated", "_unallocated"}, "CPUUtilization", "metric"}
+	key := meteringKey{owner{"_unallocated", "_unallocated", "_unallocated"}, "CPUUtilization"}
 	if counts[key] != (meteringCount{2, 1}) {
 		t.Fatalf("conflicting identity was attributed: %+v", counts)
 	}
@@ -94,7 +94,7 @@ func TestMeteringUsesResolvedOwnerTagsWithoutExportedTagFallback(t *testing.T) {
 	data := meteringData("Average")
 	data.OwnerTags = []model.Tag{{Key: "omd_service", Value: "resolved-service"}}
 	counts := countMetering([]*model.CloudwatchData{data})
-	key := meteringKey{owner{"_unallocated", "resolved-service", "_unallocated"}, "CPUUtilization", "metric"}
+	key := meteringKey{owner{"_unallocated", "resolved-service", "_unallocated"}, "CPUUtilization"}
 	if counts[key] != (meteringCount{1, 1}) {
 		t.Fatalf("resolved ownership was not used: %+v", counts)
 	}
@@ -103,16 +103,6 @@ func TestMeteringUsesResolvedOwnerTagsWithoutExportedTagFallback(t *testing.T) {
 	key.owner = owner{"_unallocated", "_unallocated", "_unallocated"}
 	if counts[key] != (meteringCount{1, 1}) {
 		t.Fatalf("unresolved ownership fell back to exported tags: %+v", counts)
-	}
-}
-
-func TestMeteringExpressionsAreNotPriced(t *testing.T) {
-	data := meteringData("")
-	data.GetMetricDataProcessingParams.Expression = "SEARCH('...', 'Average', 60)"
-	counts := countMetering([]*model.CloudwatchData{data})
-	key := meteringKey{owner{"commerce", "payments", "processor"}, "CPUUtilization", "expression"}
-	if counts[key] != (meteringCount{1, 0}) {
-		t.Fatalf("expression received a pricing estimate: %+v", counts)
 	}
 }
 
@@ -151,7 +141,7 @@ func TestMeteredClientPreservesCallsAndCountsNoData(t *testing.T) {
 			if !reflect.DeepEqual(got, result) || calls != 1 {
 				t.Fatalf("API result/call count changed: %+v, %d", got, calls)
 			}
-			labels := []string{"123456789012", "us-east-1", "AWS/EC2", "CPUUtilization", "commerce", "payments", "processor", "metric", outcome}
+			labels := []string{"123456789012", "us-east-1", "AWS/EC2", "CPUUtilization", "commerce", "payments", "processor", outcome}
 			if value := testutil.ToFloat64(promutil.CloudwatchGetMetricDataOwnerQueryObjectsCounter.WithLabelValues(labels...)); value != 1 {
 				t.Fatalf("query objects = %v", value)
 			}
@@ -178,7 +168,7 @@ func TestMeteredClientConcurrentBatches(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	labels := []string{"123456789012", "us-east-1", "AWS/EC2", "CPUUtilization", "commerce", "payments", "processor", "metric", "returned"}
+	labels := []string{"123456789012", "us-east-1", "AWS/EC2", "CPUUtilization", "commerce", "payments", "processor", "returned"}
 	if value := testutil.ToFloat64(promutil.CloudwatchGetMetricDataOwnerEstimatedUnitsCounter.WithLabelValues(labels...)); value != 20 {
 		t.Fatalf("separate logical calls should not be deduplicated: %v", value)
 	}

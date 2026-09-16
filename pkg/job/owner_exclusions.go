@@ -53,7 +53,7 @@ func (s ownerTagSet) label(key string) string {
 
 func ownerMetricExcluded(data *model.CloudwatchData, owner ownerTagSet, exclusions []model.OwnerMetricExclusion) bool {
 	params := data.GetMetricDataProcessingParams
-	if params == nil || params.Expression != "" || !params.ReturnData {
+	if params == nil {
 		return false
 	}
 	for _, exclusion := range exclusions {

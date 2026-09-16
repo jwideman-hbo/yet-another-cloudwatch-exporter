@@ -66,7 +66,7 @@ Note that while the `discovery`, `static` and `customNamespace` blocks are all o
 
 ### `owner_metric_exclusion_config`
 
-Owner metric exclusions are disabled unless both `owner-metering` and `owner-metric-exclusions` feature flags are enabled. They apply to direct GetMetricData entries from discovery and supported custom-namespace jobs after exact AWS resource ownership resolution. They do not apply to static jobs, expressions, metric-math dependencies, unmatched resources, or exported labels.
+Owner metric exclusions are disabled unless both `owner-metering` and `owner-metric-exclusions` feature flags are enabled. They apply to GetMetricData entries from discovery and supported custom-namespace jobs after exact AWS resource ownership resolution. They do not apply to static jobs, unmatched resources, or exported labels.
 
 Every selector is a Go/RE2 regular expression. `namespace` and `metricName` are required. At least one owner selector is required; omitted owner fields are not considered. A selected owner field must exist as a literal `omd_business_service`, `omd_service`, or `omd_component` tag on the matched AWS resource. Missing, `_unknown`, `_unallocated`, or conflicting selected tags never match, including when the configured expression is `.*`. Anchor expressions when exact matching is intended.
 

@@ -12,11 +12,11 @@ var (
 	CloudwatchGetMetricDataOwnerQueryObjectsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_getmetricdata_owner_query_objects_total",
 		Help: "Logical GetMetricData query objects by resource owner before export filtering; excludes internal SDK retries and pagination.",
-	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "query_kind", "outcome"})
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "outcome"})
 	CloudwatchGetMetricDataOwnerEstimatedUnitsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_getmetricdata_owner_estimated_metric_requests_total",
-		Help: "Estimated GetMetricData metric-request units, grouping up to five statistic objects per identity and period within each logical batch; excludes expression pricing, SDK retries and pagination. Reconcile with CUR before cost allocation.",
-	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "query_kind", "outcome"})
+		Help: "Estimated GetMetricData metric-request units, grouping up to five statistic objects per identity and period within each logical batch; excludes SDK retries and pagination. Reconcile with CUR before cost allocation.",
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "outcome"})
 	CloudwatchGetMetricDataOwnerExcludedQueryObjectsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total",
 		Help: "Direct GetMetricData query objects excluded before submission by an owner metric exclusion rule.",

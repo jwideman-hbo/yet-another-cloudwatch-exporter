@@ -31,7 +31,6 @@ type owner struct {
 type meteringKey struct {
 	owner
 	metric string
-	kind   string
 }
 
 type meteringCount struct {
@@ -80,15 +79,8 @@ func countMetering(batch []*model.CloudwatchData) map[meteringKey]meteringCount 
 		if data.OwnerTags != nil {
 			tags = data.OwnerTags
 		}
-		key := meteringKey{owner: metricOwner(tags), metric: data.MetricName, kind: "metric"}
+		key := meteringKey{owner: metricOwner(tags), metric: data.MetricName}
 		params := data.GetMetricDataProcessingParams
-		if params.Expression != "" {
-			key.kind = "expression"
-			count := counts[key]
-			count.objects++
-			counts[key] = count
-			continue
-		}
 		dimensions := append([]model.Dimension(nil), data.Dimensions...)
 		sort.Slice(dimensions, func(i, j int) bool {
 			if dimensions[i].Name == dimensions[j].Name {
@@ -124,11 +116,9 @@ func (c meteredClient) GetMetricData(ctx context.Context, batch []*model.Cloudwa
 		outcome = "failed_or_empty"
 	}
 	for key, count := range counts {
-		labels := []string{c.accountID, c.region, namespace, key.metric, key.businessService, key.service, key.component, key.kind, outcome}
+		labels := []string{c.accountID, c.region, namespace, key.metric, key.businessService, key.service, key.component, outcome}
 		promutil.CloudwatchGetMetricDataOwnerQueryObjectsCounter.WithLabelValues(labels...).Add(float64(count.objects))
-		if key.kind == "metric" {
-			promutil.CloudwatchGetMetricDataOwnerEstimatedUnitsCounter.WithLabelValues(labels...).Add(float64(count.units))
-		}
+		promutil.CloudwatchGetMetricDataOwnerEstimatedUnitsCounter.WithLabelValues(labels...).Add(float64(count.units))
 	}
 	return result
 }

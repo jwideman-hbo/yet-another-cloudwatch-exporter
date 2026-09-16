@@ -176,13 +176,7 @@ func TestCustomOwnerDoesNotLookupWithoutEligibleRequests(t *testing.T) {
 	}
 	ctx := config.CtxWithFlags(context.Background(), ownerMeteringFlags{})
 	data := ownerRequest("AmazonMWAA", "Environment", "target")
-	data.GetMetricDataProcessingParams.Expression = "SEARCH('...', 'Average')"
 	client := &ownerTagClient{}
-	enrichCustomNamespaceOwners(ctx, logging.NewNopLogger(), "AmazonMWAA", "123456789012", "us-east-1", []*model.CloudwatchData{data}, client)
-	if client.calls != 0 || len(data.OwnerTags) != 0 {
-		t.Fatal("expression must not be assigned one resource's owner")
-	}
-	data.GetMetricDataProcessingParams.Expression = ""
 	data.Dimensions = append(data.Dimensions, model.Dimension{Name: "Environment", Value: "different"})
 	enrichCustomNamespaceOwners(ctx, logging.NewNopLogger(), "AmazonMWAA", "123456789012", "us-east-1", []*model.CloudwatchData{data}, client)
 	if client.calls != 0 {

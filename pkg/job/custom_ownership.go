@@ -110,7 +110,7 @@ func ownerDimensionKey(pattern *regexp.Regexp, dimensions []model.Dimension) (st
 }
 
 func (m customOwnerMapping) eligible(data *model.CloudwatchData, namespace string) bool {
-	if data.Namespace != namespace || data.GetMetricDataProcessingParams == nil || data.GetMetricDataProcessingParams.Expression != "" {
+	if data.Namespace != namespace || data.GetMetricDataProcessingParams == nil {
 		return false
 	}
 	for name, expected := range m.requiredDimensions {
@@ -181,7 +181,7 @@ func newOwnerResourceIndex(mapping customOwnerMapping, resources []*model.Tagged
 }
 
 func (i ownerResourceIndex) ownerTags(data *model.CloudwatchData, namespace string) []model.Tag {
-	if data.Namespace != namespace || data.GetMetricDataProcessingParams == nil || data.GetMetricDataProcessingParams.Expression != "" {
+	if data.Namespace != namespace || data.GetMetricDataProcessingParams == nil {
 		return []model.Tag{}
 	}
 	if strings.HasPrefix(data.ResourceName, "arn:") {
