@@ -14,11 +14,24 @@ import (
 )
 
 type ScrapeConf struct {
-	APIVersion      string             `yaml:"apiVersion"`
-	StsRegion       string             `yaml:"sts-region"`
-	Discovery       Discovery          `yaml:"discovery"`
-	Static          []*Static          `yaml:"static"`
-	CustomNamespace []*CustomNamespace `yaml:"customNamespace"`
+	APIVersion            string                 `yaml:"apiVersion"`
+	StsRegion             string                 `yaml:"sts-region"`
+	Discovery             Discovery              `yaml:"discovery"`
+	Static                []*Static              `yaml:"static"`
+	CustomNamespace       []*CustomNamespace     `yaml:"customNamespace"`
+	OwnerMetricExclusions []OwnerMetricExclusion `yaml:"ownerMetricExclusions"`
+}
+
+type OwnerMetricExclusion struct {
+	Namespace  string        `yaml:"namespace"`
+	MetricName string        `yaml:"metricName"`
+	Owner      OwnerSelector `yaml:"owner"`
+}
+
+type OwnerSelector struct {
+	BusinessService string `yaml:"businessService"`
+	Service         string `yaml:"service"`
+	Component       string `yaml:"component"`
 }
 
 type Discovery struct {
@@ -141,6 +154,12 @@ func (c *ScrapeConf) Load(file string, logger logging.Logger) (model.JobsConfig,
 }
 
 func (c *ScrapeConf) Validate(logger logging.Logger) (model.JobsConfig, error) {
+	for idx, exclusion := range c.OwnerMetricExclusions {
+		if err := exclusion.validate(idx); err != nil {
+			return model.JobsConfig{}, err
+		}
+	}
+
 	if c.Discovery.Jobs == nil && c.Static == nil && c.CustomNamespace == nil {
 		return model.JobsConfig{}, fmt.Errorf("At least 1 Discovery job, 1 Static or one CustomNamespace must be defined")
 	}
@@ -198,6 +217,35 @@ func (c *ScrapeConf) Validate(logger logging.Logger) (model.JobsConfig, error) {
 	}
 
 	return c.toModelConfig(), nil
+}
+
+func (e OwnerMetricExclusion) validate(idx int) error {
+	patterns := []struct {
+		name     string
+		value    string
+		required bool
+	}{
+		{"namespace", e.Namespace, true},
+		{"metricName", e.MetricName, true},
+		{"owner.businessService", e.Owner.BusinessService, false},
+		{"owner.service", e.Owner.Service, false},
+		{"owner.component", e.Owner.Component, false},
+	}
+	if e.Owner.BusinessService == "" && e.Owner.Service == "" && e.Owner.Component == "" {
+		return fmt.Errorf("Owner metric exclusion [%d]: at least one owner selector is required", idx)
+	}
+	for _, pattern := range patterns {
+		if pattern.value == "" {
+			if pattern.required {
+				return fmt.Errorf("Owner metric exclusion [%d]: %s should not be empty", idx, pattern.name)
+			}
+			continue
+		}
+		if _, err := regexp.Compile(pattern.value); err != nil {
+			return fmt.Errorf("Owner metric exclusion [%d]: %s has invalid regex value %s: %w", idx, pattern.name, pattern.value, err)
+		}
+	}
+	return nil
 }
 
 func (j *Job) validateDiscoveryJob(logger logging.Logger, jobIdx int) error {
@@ -394,6 +442,7 @@ func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent str
 func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 	jobsCfg := model.JobsConfig{}
 	jobsCfg.StsRegion = c.StsRegion
+	jobsCfg.OwnerMetricExclusions = toModelOwnerMetricExclusions(c.OwnerMetricExclusions)
 
 	for _, discoveryJob := range c.Discovery.Jobs {
 		svc := SupportedServices.GetService(discoveryJob.Type)
@@ -460,6 +509,27 @@ func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 	}
 
 	return jobsCfg
+}
+
+func toModelOwnerMetricExclusions(exclusions []OwnerMetricExclusion) []model.OwnerMetricExclusion {
+	ret := make([]model.OwnerMetricExclusion, 0, len(exclusions))
+	for _, exclusion := range exclusions {
+		modelExclusion := model.OwnerMetricExclusion{
+			Namespace:  regexp.MustCompile(exclusion.Namespace),
+			MetricName: regexp.MustCompile(exclusion.MetricName),
+		}
+		if exclusion.Owner.BusinessService != "" {
+			modelExclusion.OwnerBusinessService = regexp.MustCompile(exclusion.Owner.BusinessService)
+		}
+		if exclusion.Owner.Service != "" {
+			modelExclusion.OwnerService = regexp.MustCompile(exclusion.Owner.Service)
+		}
+		if exclusion.Owner.Component != "" {
+			modelExclusion.OwnerComponent = regexp.MustCompile(exclusion.Owner.Component)
+		}
+		ret = append(ret, modelExclusion)
+	}
+	return ret
 }
 
 func toModelTags(tags []Tag) []model.Tag {

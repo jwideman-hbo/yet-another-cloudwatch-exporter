@@ -56,9 +56,36 @@ static:
 # Configurations for jobs of type "custom namespace"
 customNamespace:
   [ - <custom_namespace_job_config> ... ]
+
+# Optional resource-owner rules for excluding direct GetMetricData queries
+ownerMetricExclusions:
+  [ - <owner_metric_exclusion_config> ... ]
 ```
 
 Note that while the `discovery`, `static` and `customNamespace` blocks are all optionals, at least one of them must be defined.
+
+### `owner_metric_exclusion_config`
+
+Owner metric exclusions are disabled unless both `owner-metering` and `owner-metric-exclusions` feature flags are enabled. They apply to direct GetMetricData entries from discovery and supported custom-namespace jobs after exact AWS resource ownership resolution. They do not apply to static jobs, expressions, metric-math dependencies, unmatched resources, or exported labels.
+
+Every selector is a Go/RE2 regular expression. `namespace` and `metricName` are required. At least one owner selector is required; omitted owner fields are not considered. A selected owner field must exist as a literal `omd_business_service`, `omd_service`, or `omd_component` tag on the matched AWS resource. Missing, `_unknown`, `_unallocated`, or conflicting selected tags never match, including when the configured expression is `.*`. Anchor expressions when exact matching is intended.
+
+```yaml
+ownerMetricExclusions:
+  - namespace: '^AWS/EC2$'
+    metricName: '^CPUUtilization$'
+    owner:
+      businessService: '^commerce$'
+      service: '^payments$'
+      component: '^worker$'
+
+  - namespace: '^AmazonMWAA$'
+    metricName: '^DAGDuration\.Success$'
+    owner:
+      component: '^mlg-mwaa-v2$'
+```
+
+The second rule intentionally uses only a component selector. Subset selectors are broader: they can match identical component values under multiple services or business services. Exclusions remove all matching statistics for that direct metric before GMD batching. Use `yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` to audit excluded query objects. Existing `aws_*` metrics disappear when their backing query is excluded; the owner metering submitted-request counters do not count excluded objects.
 
 ### `discovery_jobs_list_config`
 

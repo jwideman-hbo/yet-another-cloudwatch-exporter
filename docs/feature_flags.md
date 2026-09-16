@@ -16,6 +16,12 @@ Uses the v2 version of the aws sdk for go. The sdk v2 version was released in Ja
 
 Expose resource-owner GetMetricData query-object counters and estimated metric-request units without changing collection. See [owner metering](owner-metering.md) for billing limitations, OMD coverage, and rollout validation.
 
+## Resource-owner metric exclusions
+
+`-enable-feature=owner-metering,owner-metric-exclusions`
+
+Exclude configured direct GetMetricData query objects only after exact resource-owner OMD resolution. Both feature flags and at least one valid top-level `ownerMetricExclusions` rule are required. Expressions, metric-math dependencies, missing selected owner tags, and static jobs are retained. See [owner metering](owner-metering.md#owner-metric-exclusions) and [configuration](configuration.md#owner_metric_exclusion_config).
+
 ## Always return info metrics
 
 `-enable-feature=always-return-info-metrics`

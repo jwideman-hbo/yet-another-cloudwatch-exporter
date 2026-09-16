@@ -230,7 +230,7 @@ func TestCustomOwnerResolutionRunsBeforeMeteringAndFailsOpen(t *testing.T) {
 			return data, nil
 		}}
 		job := model.CustomNamespaceJob{Name: "unchanged-name", Namespace: "AmazonMWAA", Metrics: []*model.MetricConfig{{Name: "TestMetric", Statistics: []string{"Average"}, Period: 60, Length: 60}}}
-		result := runCustomNamespaceJob(ctx, logging.NewNopLogger(), job, ownerCloudwatchClient{}, processor, client, "123456789012", "us-east-1")
+		result := runCustomNamespaceJob(ctx, logging.NewNopLogger(), job, ownerCloudwatchClient{}, processor, client, "123456789012", "us-east-1", nil)
 		if len(result) != 1 || calls != 1 {
 			t.Fatal("lookup failure suppressed metric collection")
 		}

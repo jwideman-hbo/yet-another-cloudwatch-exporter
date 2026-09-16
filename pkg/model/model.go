@@ -12,10 +12,19 @@ const (
 )
 
 type JobsConfig struct {
-	StsRegion           string
-	DiscoveryJobs       []DiscoveryJob
-	StaticJobs          []StaticJob
-	CustomNamespaceJobs []CustomNamespaceJob
+	StsRegion             string
+	DiscoveryJobs         []DiscoveryJob
+	StaticJobs            []StaticJob
+	CustomNamespaceJobs   []CustomNamespaceJob
+	OwnerMetricExclusions []OwnerMetricExclusion
+}
+
+type OwnerMetricExclusion struct {
+	Namespace            *regexp.Regexp
+	MetricName           *regexp.Regexp
+	OwnerBusinessService *regexp.Regexp
+	OwnerService         *regexp.Regexp
+	OwnerComponent       *regexp.Regexp
 }
 
 type DiscoveryJob struct {

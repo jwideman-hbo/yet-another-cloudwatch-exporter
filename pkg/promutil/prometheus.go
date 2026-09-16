@@ -17,6 +17,10 @@ var (
 		Name: "yace_cloudwatch_getmetricdata_owner_estimated_metric_requests_total",
 		Help: "Estimated GetMetricData metric-request units, grouping up to five statistic objects per identity and period within each logical batch; excludes expression pricing, SDK retries and pagination. Reconcile with CUR before cost allocation.",
 	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "query_kind", "outcome"})
+	CloudwatchGetMetricDataOwnerExcludedQueryObjectsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total",
+		Help: "Direct GetMetricData query objects excluded before submission by an owner metric exclusion rule.",
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component"})
 	CloudwatchAPIErrorCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_request_errors",
 		Help: "Help is not implemented yet.",

@@ -32,6 +32,7 @@ func runDiscoveryJob(
 	clientCloudwatch cloudwatch.Client,
 	gmdProcessor getMetricDataProcessor,
 	accountID string,
+	ownerMetricExclusions []model.OwnerMetricExclusion,
 ) ([]*model.TaggedResource, []*model.CloudwatchData) {
 	logger.Debug("Get tagged resources")
 
@@ -57,6 +58,10 @@ func runDiscoveryJob(
 	}
 
 	enrichDiscoveryOwners(ctx, svc.Namespace, accountID, region, getMetricDatas, resources)
+	getMetricDatas = applyOwnerMetricExclusions(ctx, accountID, region, ownerMetricExclusions, getMetricDatas)
+	if len(getMetricDatas) == 0 {
+		return resources, nil
+	}
 
 	jobLength := getLargestLengthForMetrics(job.Metrics)
 	getMetricDatas, err = gmdProcessor.Run(ctx, svc.Namespace, jobLength, job.Delay, job.RoundingPeriod, getMetricDatas)

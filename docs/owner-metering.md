@@ -45,6 +45,34 @@ Resolved tags are stored in `CloudwatchData.OwnerTags`, separately from exported
 
 If enrichment fails, GMD collection continues and its requests are counted as unallocated. Unsupported namespaces and identifier-free aggregate requests perform no additional lookup. This does not repair resources genuinely missing `omd_component`, legacy-only tags, misspelled identities, raw Athena label-export configuration, or shared metrics without resource identity. It does not claim to close the entire observed metadata gap.
 
+## Owner metric exclusions
+
+Top-level `ownerMetricExclusions` rules can suppress direct metric queries for selected resource owners and raw CloudWatch metric names. Actual filtering requires both flags:
+
+```text
+--enable-feature=owner-metering,owner-metric-exclusions
+```
+
+Example:
+
+```yaml
+ownerMetricExclusions:
+  - namespace: '^AWS/EC2$'
+    metricName: '^CPUUtilization$'
+    owner:
+      businessService: '^commerce$'
+      service: '^payments$'
+      component: '^worker$'
+```
+
+All configured values are Go/RE2 regular expressions. Namespace and metric selectors are required; one or more owner selectors may be supplied. Each selected owner value must come from the exact matched resource's literal canonical OMD tag. Missing, empty, `_unknown`, `_unallocated`, or conflicting selected tags cannot match, even against `.*`. Rules never infer owners from metric labels, resource names, legacy tags, job names, accounts, or exporter metadata.
+
+Filtering occurs after owner enrichment and before GMD batching. Metric-math expressions and their non-returning base dependencies are retained. Static jobs, unsupported custom namespaces, unmatched resources and unallocated selected fields are not excluded. A component-only selector is allowed but can match that component under multiple services; specify the full tuple when that is not intended.
+
+`yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` records each omitted direct query object by target, namespace, raw CloudWatch metric name and resolved owner tuple. Submitted owner counters do not include excluded objects. Existing exported AWS series backed by an excluded query stop updating and eventually become stale; no metric configuration or historical AMP data is deleted.
+
+Removing the `owner-metric-exclusions` flag disables every rule without removing configuration. Removing `owner-metering` also prevents exclusion because trusted resource-owner metadata is then unavailable.
+
 ## Billing limitations
 
 AWS describes the five-statistics grouping at https://aws.amazon.com/cloudwatch/pricing/ under "Retrieving Classic Metrics with Get Services". The estimate counts objects conservatively, including repeated statistics, and does not combine different periods. Reconcile these cases with actual CUR usage before using the estimate for chargeback.

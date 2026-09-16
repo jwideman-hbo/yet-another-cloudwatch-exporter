@@ -18,6 +18,7 @@ func runCustomNamespaceJob(
 	gmdProcessor getMetricDataProcessor,
 	ownerTagClient tagging.Client,
 	accountID, region string,
+	ownerMetricExclusions []model.OwnerMetricExclusion,
 ) []*model.CloudwatchData {
 	cloudwatchDatas := getMetricDataForQueriesForCustomNamespace(ctx, job, clientCloudwatch, logger)
 	if len(cloudwatchDatas) == 0 {
@@ -26,6 +27,10 @@ func runCustomNamespaceJob(
 	}
 
 	enrichCustomNamespaceOwners(ctx, logger, job.Namespace, accountID, region, cloudwatchDatas, ownerTagClient)
+	cloudwatchDatas = applyOwnerMetricExclusions(ctx, accountID, region, ownerMetricExclusions, cloudwatchDatas)
+	if len(cloudwatchDatas) == 0 {
+		return nil
+	}
 
 	jobLength := getLargestLengthForMetrics(job.Metrics)
 	var err error
