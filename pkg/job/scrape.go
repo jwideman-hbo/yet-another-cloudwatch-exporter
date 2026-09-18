@@ -6,6 +6,7 @@ import (
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/getmetricdata"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
@@ -41,8 +42,12 @@ func ScrapeAwsData(
 					jobLogger = jobLogger.With("account", accountID)
 
 					cloudwatchClient := factory.GetCloudwatchClient(region, role, cloudwatchConcurrency)
-					gmdProcessor := getmetricdata.NewDefaultProcessor(logger, cloudwatchClient, metricsPerQuery, cloudwatchConcurrency.GetMetricData)
-					resources, metrics := runDiscoveryJob(ctx, jobLogger, discoveryJob, region, factory.GetTaggingClient(region, role, taggingAPIConcurrency), cloudwatchClient, gmdProcessor)
+					var gmdClient getmetricdata.Client = cloudwatchClient
+					if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+						gmdClient = getmetricdata.NewMeteredClient(gmdClient, accountID, region)
+					}
+					gmdProcessor := getmetricdata.NewDefaultProcessor(logger, gmdClient, metricsPerQuery, cloudwatchConcurrency.GetMetricData)
+					resources, metrics := runDiscoveryJob(ctx, jobLogger, discoveryJob, region, factory.GetTaggingClient(region, role, taggingAPIConcurrency), cloudwatchClient, gmdProcessor, accountID, metricsPerQuery, jobsCfg.OwnerPolicy)
 					addDataToOutput := len(metrics) != 0
 					if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.AlwaysReturnInfoMetrics) {
 						addDataToOutput = addDataToOutput || len(resources) != 0
@@ -120,8 +125,16 @@ func ScrapeAwsData(
 					jobLogger = jobLogger.With("account", accountID)
 
 					cloudwatchClient := factory.GetCloudwatchClient(region, role, cloudwatchConcurrency)
-					gmdProcessor := getmetricdata.NewDefaultProcessor(logger, cloudwatchClient, metricsPerQuery, cloudwatchConcurrency.GetMetricData)
-					metrics := runCustomNamespaceJob(ctx, jobLogger, customNamespaceJob, cloudwatchClient, gmdProcessor)
+					var gmdClient getmetricdata.Client = cloudwatchClient
+					if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+						gmdClient = getmetricdata.NewMeteredClient(gmdClient, accountID, region)
+					}
+					gmdProcessor := getmetricdata.NewDefaultProcessor(logger, gmdClient, metricsPerQuery, cloudwatchConcurrency.GetMetricData)
+					var ownerTagClient tagging.Client
+					if _, supported := customNamespaceOwnerMapping(customNamespaceJob.Namespace); supported && config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+						ownerTagClient = factory.GetTaggingClient(region, role, taggingAPIConcurrency)
+					}
+					metrics := runCustomNamespaceJob(ctx, jobLogger, customNamespaceJob, cloudwatchClient, gmdProcessor, ownerTagClient, accountID, region, metricsPerQuery, jobsCfg.OwnerPolicy)
 					metricResult := model.CloudwatchMetricResult{
 						Context: &model.ScrapeContext{
 							Region:     region,

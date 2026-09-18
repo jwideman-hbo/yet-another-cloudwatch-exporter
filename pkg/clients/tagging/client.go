@@ -11,6 +11,10 @@ type Client interface {
 	GetResources(ctx context.Context, job model.DiscoveryJob, region string) ([]*model.TaggedResource, error)
 }
 
+type OwnerResourceClient interface {
+	GetResourcesForOwner(ctx context.Context, resourceTypes []string, region string) ([]*model.TaggedResource, error)
+}
+
 var ErrExpectedToFindResources = errors.New("expected to discover resources but none were found")
 
 type limitedConcurrencyClient struct {
@@ -26,8 +30,25 @@ func NewLimitedConcurrencyClient(client Client, maxConcurrency int) Client {
 }
 
 func (c limitedConcurrencyClient) GetResources(ctx context.Context, job model.DiscoveryJob, region string) ([]*model.TaggedResource, error) {
-	c.sem <- struct{}{}
-	res, err := c.client.GetResources(ctx, job, region)
-	<-c.sem
-	return res, err
+	select {
+	case c.sem <- struct{}{}:
+		defer func() { <-c.sem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return c.client.GetResources(ctx, job, region)
+}
+
+func (c limitedConcurrencyClient) GetResourcesForOwner(ctx context.Context, resourceTypes []string, region string) ([]*model.TaggedResource, error) {
+	client, ok := c.client.(OwnerResourceClient)
+	if !ok {
+		return nil, errors.New("tagging client does not support owner resource lookup")
+	}
+	select {
+	case c.sem <- struct{}{}:
+		defer func() { <-c.sem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return client.GetResourcesForOwner(ctx, resourceTypes, region)
 }

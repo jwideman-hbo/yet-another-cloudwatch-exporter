@@ -10,6 +10,18 @@ You can enable them using the `-enable-feature` flag with a comma separated list
 
 Uses the v2 version of the aws sdk for go. The sdk v2 version was released in Jan 2021 and is marketed to come with large performance gains. This version offers a drastically different interface and should be compatible with sdk v2.
 
+## Resource-owner metering
+
+`-enable-feature=owner-metering`
+
+Expose resource-owner GetMetricData query-object counters plus pre-filter and submitted estimated metric-request units without changing collection. See [owner metering](owner-metering.md) for validated billing behavior, OMD coverage, savings reconciliation, and rollout guidance.
+
+## Resource-owner metric filtering
+
+`-enable-feature=owner-metering,owner-metric-filtering`
+
+Apply cumulative deployment, job, and metric owner policies to direct GetMetricData queries after exact resource-owner OMD resolution. Selectors are exact hierarchical OMD tuples; incomplete ownership fails open, and static jobs are unchanged. See [owner metering](owner-metering.md#owner-metric-filtering) and [configuration](configuration.md#owner_policy_config).
+
 ## Always return info metrics
 
 `-enable-feature=always-return-info-metrics`

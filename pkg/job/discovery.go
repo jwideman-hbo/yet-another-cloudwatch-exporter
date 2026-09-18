@@ -10,6 +10,7 @@ import (
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/getmetricdata"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/maxdimassociator"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
@@ -31,6 +32,9 @@ func runDiscoveryJob(
 	clientTag tagging.Client,
 	clientCloudwatch cloudwatch.Client,
 	gmdProcessor getMetricDataProcessor,
+	accountID string,
+	metricsPerQuery int,
+	deploymentOwnerPolicy *model.OwnerPolicy,
 ) ([]*model.TaggedResource, []*model.CloudwatchData) {
 	logger.Debug("Get tagged resources")
 
@@ -52,6 +56,15 @@ func runDiscoveryJob(
 	getMetricDatas := getMetricDataForQueries(ctx, logger, job, svc, clientCloudwatch, resources)
 	if len(getMetricDatas) == 0 {
 		logger.Info("No metrics data found")
+		return resources, nil
+	}
+
+	enrichDiscoveryOwners(ctx, svc.Namespace, accountID, region, getMetricDatas, resources)
+	if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+		getmetricdata.RecordPreFilterMetering(getMetricDatas, metricsPerQuery, accountID, region, svc.Namespace)
+	}
+	getMetricDatas = applyOwnerPolicies(ctx, accountID, region, deploymentOwnerPolicy, job.OwnerPolicy, getMetricDatas)
+	if len(getMetricDatas) == 0 {
 		return resources, nil
 	}
 
@@ -181,6 +194,7 @@ func getFilteredMetricDatas(
 					AddCloudwatchTimestamp: m.AddCloudwatchTimestamp,
 				},
 				Tags:                      metricTags,
+				OwnerPolicy:               m.OwnerPolicy,
 				GetMetricDataResult:       nil,
 				GetMetricStatisticsResult: nil,
 			})

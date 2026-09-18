@@ -9,6 +9,22 @@ import (
 )
 
 var (
+	CloudwatchGetMetricDataOwnerQueryObjectsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "yace_cloudwatch_getmetricdata_owner_query_objects_total",
+		Help: "Logical GetMetricData query objects submitted by resource owner; excludes queries removed by owner policy filtering, internal SDK retries, and pagination.",
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "outcome"})
+	CloudwatchGetMetricDataOwnerEstimatedUnitsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "yace_cloudwatch_getmetricdata_owner_estimated_metric_requests_total",
+		Help: "Estimated submitted GetMetricData metric-request units, grouping up to five statistic objects per identity and period within each logical batch; excludes internal SDK retries and pagination. Reconcile with CUR before cost allocation.",
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component", "outcome"})
+	CloudwatchGetMetricDataOwnerPreFilterEstimatedUnitsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "yace_cloudwatch_getmetricdata_owner_pre_filter_estimated_metric_requests_total",
+		Help: "Estimated GetMetricData metric-request units before owner policy filtering, using the configured query batch size. Subtract submitted estimated units to estimate avoided units.",
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component"})
+	CloudwatchGetMetricDataOwnerExcludedQueryObjectsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total",
+		Help: "Direct GetMetricData query objects excluded before submission by owner policy filtering. This is not a billing-unit counter.",
+	}, []string{"target_account_id", "target_region", "cloudwatch_namespace", "cloudwatch_metric_name", "owner_business_service", "owner_service", "owner_component"})
 	CloudwatchAPIErrorCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_request_errors",
 		Help: "Help is not implemented yet.",
@@ -23,7 +39,7 @@ var (
 	})
 	CloudwatchGetMetricDataAPIMetricsCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_getmetricdata_metrics_requested_total",
-		Help: "Number of metrics requested from the CloudWatch GetMetricData API which is how AWS bills",
+		Help: "Number of GetMetricData query objects submitted; AWS can group up to five statistics for one metric into one billed metric request.",
 	})
 	CloudwatchGetMetricStatisticsAPICounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "yace_cloudwatch_getmetricstatistics_requests_total",

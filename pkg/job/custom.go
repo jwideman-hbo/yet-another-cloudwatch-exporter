@@ -5,6 +5,9 @@ import (
 	"sync"
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/getmetricdata"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
 )
@@ -15,10 +18,23 @@ func runCustomNamespaceJob(
 	job model.CustomNamespaceJob,
 	clientCloudwatch cloudwatch.Client,
 	gmdProcessor getMetricDataProcessor,
+	ownerTagClient tagging.Client,
+	accountID, region string,
+	metricsPerQuery int,
+	deploymentOwnerPolicy *model.OwnerPolicy,
 ) []*model.CloudwatchData {
 	cloudwatchDatas := getMetricDataForQueriesForCustomNamespace(ctx, job, clientCloudwatch, logger)
 	if len(cloudwatchDatas) == 0 {
 		logger.Debug("No metrics data found")
+		return nil
+	}
+
+	enrichCustomNamespaceOwners(ctx, logger, job.Namespace, accountID, region, cloudwatchDatas, ownerTagClient)
+	if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+		getmetricdata.RecordPreFilterMetering(cloudwatchDatas, metricsPerQuery, accountID, region, job.Namespace)
+	}
+	cloudwatchDatas = applyOwnerPolicies(ctx, accountID, region, deploymentOwnerPolicy, job.OwnerPolicy, cloudwatchDatas)
+	if len(cloudwatchDatas) == 0 {
 		return nil
 	}
 
@@ -77,6 +93,7 @@ func getMetricDataForQueriesForCustomNamespace(
 								AddCloudwatchTimestamp: metric.AddCloudwatchTimestamp,
 							},
 							Tags:                      nil,
+							OwnerPolicy:               metric.OwnerPolicy,
 							GetMetricDataResult:       nil,
 							GetMetricStatisticsResult: nil,
 						})
