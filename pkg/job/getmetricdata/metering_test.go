@@ -114,6 +114,25 @@ func (c meteringTestClient) GetMetricData(ctx context.Context, batch []*model.Cl
 	return c.call(ctx, batch, namespace, start, end)
 }
 
+func TestRecordPreExclusionMeteringUsesActualBatchBoundaries(t *testing.T) {
+	promutil.CloudwatchGetMetricDataOwnerPreExclusionEstimatedUnitsCounter.Reset()
+	requests := []*model.CloudwatchData{
+		meteringData("Average"),
+		meteringData("Minimum"),
+		meteringData("Maximum"),
+		meteringData("Sum"),
+		meteringData("Average"),
+		meteringData("Maximum"),
+	}
+	requests[4].Dimensions[0].Value = "i-2"
+	requests[5].Dimensions[0].Value = "i-2"
+	RecordPreExclusionMetering(requests, 5, "123456789012", "us-east-1", "AWS/EC2")
+	labels := []string{"123456789012", "us-east-1", "AWS/EC2", "CPUUtilization", "commerce", "payments", "processor"}
+	if value := testutil.ToFloat64(promutil.CloudwatchGetMetricDataOwnerPreExclusionEstimatedUnitsCounter.WithLabelValues(labels...)); value != 3 {
+		t.Fatalf("pre-exclusion estimated units = %v", value)
+	}
+}
+
 func TestMeteredClientPreservesCallsAndCountsNoData(t *testing.T) {
 	for _, failed := range []bool{false, true} {
 		t.Run(fmt.Sprint(failed), func(t *testing.T) {

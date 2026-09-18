@@ -6,6 +6,8 @@ import (
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/getmetricdata"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
 )
@@ -18,6 +20,7 @@ func runCustomNamespaceJob(
 	gmdProcessor getMetricDataProcessor,
 	ownerTagClient tagging.Client,
 	accountID, region string,
+	metricsPerQuery int,
 	ownerMetricExclusions []model.OwnerMetricExclusion,
 ) []*model.CloudwatchData {
 	cloudwatchDatas := getMetricDataForQueriesForCustomNamespace(ctx, job, clientCloudwatch, logger)
@@ -27,6 +30,9 @@ func runCustomNamespaceJob(
 	}
 
 	enrichCustomNamespaceOwners(ctx, logger, job.Namespace, accountID, region, cloudwatchDatas, ownerTagClient)
+	if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+		getmetricdata.RecordPreExclusionMetering(cloudwatchDatas, metricsPerQuery, accountID, region, job.Namespace)
+	}
 	cloudwatchDatas = applyOwnerMetricExclusions(ctx, accountID, region, ownerMetricExclusions, cloudwatchDatas)
 	if len(cloudwatchDatas) == 0 {
 		return nil

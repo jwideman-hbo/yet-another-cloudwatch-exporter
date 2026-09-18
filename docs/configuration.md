@@ -85,7 +85,7 @@ ownerMetricExclusions:
       component: '^mlg-mwaa-v2$'
 ```
 
-The second rule intentionally uses only a component selector. Subset selectors are broader: they can match identical component values under multiple services or business services. Exclusions remove all matching statistics for that direct metric before GMD batching. Use `yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` to audit excluded query objects. Existing `aws_*` metrics disappear when their backing query is excluded; the owner metering submitted-request counters do not count excluded objects.
+The second rule intentionally uses only a component selector. Subset selectors are broader: they can match identical component values under multiple services or business services. Prefer anchored expressions and the complete owner tuple for generated production rules. Exclusions remove all matching statistics for that direct metric before GMD batching. Use `yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` to audit excluded query objects; it is not a billing-unit or savings counter. Compare `yace_cloudwatch_getmetricdata_owner_pre_exclusion_estimated_metric_requests_total` with submitted estimated metric requests to estimate avoided billing units. Existing `aws_*` metrics disappear when their backing query is excluded; the owner metering submitted-request counters do not count excluded objects.
 
 ### `discovery_jobs_list_config`
 

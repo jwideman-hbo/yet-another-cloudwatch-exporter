@@ -108,6 +108,19 @@ func countMetering(batch []*model.CloudwatchData) map[meteringKey]meteringCount 
 	return counts
 }
 
+func RecordPreExclusionMetering(requests []*model.CloudwatchData, metricsPerQuery int, accountID, region, namespace string) {
+	for start := 0; start < len(requests); start += metricsPerQuery {
+		end := start + metricsPerQuery
+		if end > len(requests) {
+			end = len(requests)
+		}
+		for key, count := range countMetering(requests[start:end]) {
+			labels := []string{accountID, region, namespace, key.metric, key.businessService, key.service, key.component}
+			promutil.CloudwatchGetMetricDataOwnerPreExclusionEstimatedUnitsCounter.WithLabelValues(labels...).Add(float64(count.units))
+		}
+	}
+}
+
 func (c meteredClient) GetMetricData(ctx context.Context, batch []*model.CloudwatchData, namespace string, startTime, endTime time.Time) []cloudwatch.MetricDataResult {
 	counts := countMetering(batch)
 	result := c.Client.GetMetricData(ctx, batch, namespace, startTime, endTime)

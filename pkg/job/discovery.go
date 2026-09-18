@@ -10,6 +10,7 @@ import (
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/cloudwatch"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/clients/tagging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
+	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/getmetricdata"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/job/maxdimassociator"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/logging"
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/model"
@@ -32,6 +33,7 @@ func runDiscoveryJob(
 	clientCloudwatch cloudwatch.Client,
 	gmdProcessor getMetricDataProcessor,
 	accountID string,
+	metricsPerQuery int,
 	ownerMetricExclusions []model.OwnerMetricExclusion,
 ) ([]*model.TaggedResource, []*model.CloudwatchData) {
 	logger.Debug("Get tagged resources")
@@ -58,6 +60,9 @@ func runDiscoveryJob(
 	}
 
 	enrichDiscoveryOwners(ctx, svc.Namespace, accountID, region, getMetricDatas, resources)
+	if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
+		getmetricdata.RecordPreExclusionMetering(getMetricDatas, metricsPerQuery, accountID, region, svc.Namespace)
+	}
 	getMetricDatas = applyOwnerMetricExclusions(ctx, accountID, region, ownerMetricExclusions, getMetricDatas)
 	if len(getMetricDatas) == 0 {
 		return resources, nil

@@ -23,6 +23,7 @@ var Metrics = []prometheus.Collector{
 	promutil.CloudwatchGetMetricDataAPIMetricsCounter,
 	promutil.CloudwatchGetMetricDataOwnerQueryObjectsCounter,
 	promutil.CloudwatchGetMetricDataOwnerEstimatedUnitsCounter,
+	promutil.CloudwatchGetMetricDataOwnerPreExclusionEstimatedUnitsCounter,
 	promutil.CloudwatchGetMetricDataOwnerExcludedQueryObjectsCounter,
 	promutil.CloudwatchGetMetricStatisticsAPICounter,
 	promutil.ResourceGroupTaggingAPICounter,
