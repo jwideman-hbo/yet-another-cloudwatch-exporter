@@ -114,8 +114,8 @@ func (c meteringTestClient) GetMetricData(ctx context.Context, batch []*model.Cl
 	return c.call(ctx, batch, namespace, start, end)
 }
 
-func TestRecordPreExclusionMeteringUsesActualBatchBoundaries(t *testing.T) {
-	promutil.CloudwatchGetMetricDataOwnerPreExclusionEstimatedUnitsCounter.Reset()
+func TestRecordPreFilterMeteringUsesActualBatchBoundaries(t *testing.T) {
+	promutil.CloudwatchGetMetricDataOwnerPreFilterEstimatedUnitsCounter.Reset()
 	requests := []*model.CloudwatchData{
 		meteringData("Average"),
 		meteringData("Minimum"),
@@ -126,10 +126,10 @@ func TestRecordPreExclusionMeteringUsesActualBatchBoundaries(t *testing.T) {
 	}
 	requests[4].Dimensions[0].Value = "i-2"
 	requests[5].Dimensions[0].Value = "i-2"
-	RecordPreExclusionMetering(requests, 5, "123456789012", "us-east-1", "AWS/EC2")
+	RecordPreFilterMetering(requests, 5, "123456789012", "us-east-1", "AWS/EC2")
 	labels := []string{"123456789012", "us-east-1", "AWS/EC2", "CPUUtilization", "commerce", "payments", "processor"}
-	if value := testutil.ToFloat64(promutil.CloudwatchGetMetricDataOwnerPreExclusionEstimatedUnitsCounter.WithLabelValues(labels...)); value != 3 {
-		t.Fatalf("pre-exclusion estimated units = %v", value)
+	if value := testutil.ToFloat64(promutil.CloudwatchGetMetricDataOwnerPreFilterEstimatedUnitsCounter.WithLabelValues(labels...)); value != 3 {
+		t.Fatalf("pre-filter estimated units = %v", value)
 	}
 }
 

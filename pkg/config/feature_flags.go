@@ -12,7 +12,7 @@ const AwsSdkV2 = "aws-sdk-v2"
 
 const OwnerMetering = "owner-metering"
 
-const OwnerMetricExclusions = "owner-metric-exclusions"
+const OwnerMetricFiltering = "owner-metric-filtering"
 
 // AlwaysReturnInfoMetrics is a feature flag used to enable the return of info metrics even when there are no corresponding CloudWatch metrics
 const AlwaysReturnInfoMetrics = "always-return-info-metrics"

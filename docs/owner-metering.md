@@ -4,11 +4,13 @@ This opt-in instrumentation supports CEA-114135 analysis. It changes neither col
 
 ## Signals
 
-- `yace_cloudwatch_getmetricdata_owner_query_objects_total`: query objects submitted through each logical GetMetricData batch after owner exclusions.
+- `yace_cloudwatch_getmetricdata_owner_query_objects_total`: query objects submitted through each logical GetMetricData batch after owner policy filtering.
 - `yace_cloudwatch_getmetricdata_owner_estimated_metric_requests_total`: estimated submitted metric-request units for direct MetricStat entries. Each group of up to five statistic objects for one metric identity and period in one logical batch contributes one unit. Different batches and polling cycles are counted separately.
-- `yace_cloudwatch_getmetricdata_owner_pre_exclusion_estimated_metric_requests_total`: the same billing-unit estimate before owner exclusions, using the configured query batch size and the original request order.
+- `yace_cloudwatch_getmetricdata_owner_pre_filter_estimated_metric_requests_total`: the same billing-unit estimate before owner policy filtering, using the configured query batch size and the original request order.
 
-The submitted counters carry `target_account_id`, `target_region`, `cloudwatch_namespace`, `cloudwatch_metric_name`, `owner_business_service`, `owner_service`, `owner_component`, and `outcome`. The pre-exclusion counter carries the same labels except `outcome`. Target account is resolved through the existing account client, not inferred from the exporter's hosting account. It still needs to be reconciled to the account actually billed in CUR for the deployed cross-account access model.
+For example, requesting `Average` and `Maximum` for one metric identity increments the query-object counter by two but the estimated metric-request counter by one. The query-object signal audits YACE work; the grouped estimate is the signal that approximates `GMD-Metrics` billing.
+
+The submitted counters carry `target_account_id`, `target_region`, `cloudwatch_namespace`, `cloudwatch_metric_name`, `owner_business_service`, `owner_service`, `owner_component`, and `outcome`. The pre-filter counter carries the same labels except `outcome`. Target account is resolved through the existing account client, not inferred from the exporter's hosting account. It still needs to be reconciled to the account actually billed in CUR for the deployed cross-account access model.
 
 Only resource OMD tags on the request are used. Discovery metering reads raw tags from the already-fetched resource inventory, independently of `exportedTagsOnMetrics`; omitting OMD from exported labels no longer hides it from accounting. Missing tag fields are `_unallocated`; conflicting owners for the same metric identity become wholly unallocated. Supported custom namespaces resolve request-only owner tags as described below; other custom namespace metrics without associated tags remain unallocated. Exporter/pod OMD must never be used as a customer fallback. Tags describe resource owners, not people querying the metrics.
 
@@ -46,37 +48,64 @@ Resolved tags are stored in `CloudwatchData.OwnerTags`, separately from exported
 
 If enrichment fails, GMD collection continues and its requests are counted as unallocated. Unsupported namespaces and identifier-free aggregate requests perform no additional lookup. This does not repair resources genuinely missing `omd_component`, legacy-only tags, misspelled identities, raw Athena label-export configuration, or shared metrics without resource identity. It does not claim to close the entire observed metadata gap.
 
-## Owner metric exclusions
+## Owner metric filtering
 
-Top-level `ownerMetricExclusions` rules can suppress direct metric queries for selected resource owners and raw CloudWatch metric names. Actual filtering requires both flags:
+Owner policies can filter direct metric queries at the deployment, discovery/custom-namespace job, and metric levels. Actual filtering requires both flags:
 
 ```text
---enable-feature=owner-metering,owner-metric-exclusions
+--enable-feature=owner-metering,owner-metric-filtering
 ```
 
-Example:
+Existing configurations need no policy. An omitted policy imposes no additional restriction, preserving collection for all owners. Existing metrics can add exact opt-outs with `allOwners`:
 
 ```yaml
-ownerMetricExclusions:
-  - namespace: '^AWS/EC2$'
-    metricName: '^CPUUtilization$'
-    owner:
-      businessService: '^commerce$'
-      service: '^payments$'
-      component: '^worker$'
+ownerPolicy:
+  mode: allOwners
+  except:
+    - businessService: media-supply-chain
+
+discovery:
+  jobs:
+    - type: AWS/EC2
+      ownerPolicy:
+        mode: allOwners
+        except:
+          - businessService: playback-services
+      metrics:
+        - name: CPUUtilization
+          statistics:
+            - Average
+          ownerPolicy:
+            mode: allOwners
+            except:
+              - businessService: commerce
+                service: checkout-platform
+                component: payment-api
 ```
 
-All configured values are Go/RE2 regular expressions. Namespace and metric selectors are required; one or more owner selectors may be supplied. Each selected owner value must come from the exact matched resource's literal canonical OMD tag. Missing, empty, `_unknown`, `_unallocated`, or conflicting selected tags cannot match, even against `.*`. Rules never infer owners from metric labels, resource names, legacy tags, job names, accounts, or exporter metadata.
+Specialized or newly requested metrics can use `selectedOwners` so only explicit consumers receive them:
 
-Filtering occurs after owner enrichment and before GMD batching. Static jobs, unsupported custom namespaces, unmatched resources, and unallocated selected fields are not excluded. A component-only selector is allowed but can match that component under multiple services; specify the full tuple when that is not intended.
+```yaml
+ownerPolicy:
+  mode: selectedOwners
+  owners:
+    - businessService: observability
+      service: metrics-as-a-service
+    - businessService: commerce
+      service: checkout-platform
+```
 
-`yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` records each omitted direct query object by target, namespace, raw CloudWatch metric name and resolved owner tuple. This is an audit count, not a cost-savings count: excluding five statistics for one metric identity can remove only one billed metric-request unit. Submitted owner counters do not include excluded objects. Existing exported AWS series backed by an excluded query stop updating and eventually become stale; no metric configuration or historical AMP data is deleted.
+Selectors use exact strings, not regular expressions, and preserve the OMD hierarchy. `businessService` is required. Adding `service` narrows the selector to that service and its components; adding `component` requires both ancestors and selects the complete owner tuple. A query must pass every configured policy, so a metric policy can narrow a job policy but cannot restore an owner denied by the job or deployment. Choose mode based on desired behavior for future owners, not only which representation is shorter: `allOwners` automatically includes them, while `selectedOwners` does not.
 
-Estimate avoided billed units over a complete interval by subtracting submitted units, summed across `outcome`, from pre-exclusion units with the same remaining labels. Perform the authoritative comparison after summing all owners and metric names for a target account and region because removing entries can move later identities across 500-query batch boundaries. Per-owner or per-metric differences can include those packing effects.
+Filtering occurs after owner enrichment and before GMD batching. It applies to discovery and supported custom-namespace jobs. Static jobs are unchanged. Any request with a missing, empty, `_unknown`, `_unallocated`, or conflicting canonical OMD field fails open and remains collected. Policies never infer ownership from metric labels, resource names, legacy tags, job names, accounts, or exporter metadata.
+
+`yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` records each filtered direct query object by target, namespace, raw CloudWatch metric name and resolved owner tuple. This is an audit count, not a cost-savings count: excluding five statistics for one metric identity can remove only one billed metric-request unit. Submitted owner counters do not include excluded objects. Existing exported AWS series backed by a filtered query stop updating and eventually become stale; no metric configuration or historical AMP data is deleted.
+
+Estimate avoided billed units over a complete interval by subtracting submitted units, summed across `outcome`, from pre-filter units with the same remaining labels. Perform the authoritative comparison after summing all owners and metric names for a target account and region because removing entries can move later identities across 500-query batch boundaries. Per-owner or per-metric differences can include those packing effects.
 
 ```promql
 sum without (cloudwatch_metric_name, owner_business_service, owner_service, owner_component) (
-  increase(yace_cloudwatch_getmetricdata_owner_pre_exclusion_estimated_metric_requests_total[1d])
+  increase(yace_cloudwatch_getmetricdata_owner_pre_filter_estimated_metric_requests_total[1d])
 )
 -
 sum without (cloudwatch_metric_name, owner_business_service, owner_service, owner_component, outcome) (
@@ -84,7 +113,7 @@ sum without (cloudwatch_metric_name, owner_business_service, owner_service, owne
 )
 ```
 
-Removing the `owner-metric-exclusions` flag disables every rule without removing configuration. Removing `owner-metering` also prevents exclusion because trusted resource-owner metadata is then unavailable.
+Removing the `owner-metric-filtering` flag disables every policy without removing configuration. Removing `owner-metering` also prevents filtering because trusted resource-owner metadata is then unavailable. YACE cannot identify whether a metric was newly added; repositories that require new metrics to start in `selectedOwners` mode must enforce that transition in CI.
 
 ## Billing validation and limitations
 
@@ -102,7 +131,7 @@ When the same exporter counter is stored in multiple workspaces or scraped by HA
 
 Prioritize estimated billing units rather than query-object counts. For each owner, report the target account and region, namespace, metric name, estimated units per poll, effective polling interval, estimated units per day, and downstream usage evidence. A metric attached to many resource dimension sets or polled every minute costs more than an equally unused metric with a small footprint or five-minute cadence.
 
-Before adding an exclusion, search dashboards, alert rules, recording rules, autoscaling dependencies, runbooks, and available query-usage telemetry, then obtain the owning team's confirmation. Use anchored namespace and metric expressions and normally select the complete business-service, service, and component tuple. Component-only rules can span teams that reuse a component value.
+Before filtering a metric, search dashboards, alert rules, recording rules, autoscaling dependencies, runbooks, and available query-usage telemetry, then obtain the owning team's confirmation. Use the narrowest exact owner hierarchy that reflects the decision. A business-service selector intentionally includes all descendant services and components; component selectors require the complete tuple.
 
 Do not use statistic-level removal as the primary savings mechanism. Up to five statistics for one identity in one request form one billed metric request. The material levers are removing an entire unused metric identity, eliminating duplicate collectors, and matching the YACE polling interval to the source metric's publication frequency. CloudWatch standard resolution permits one-minute granularity but does not guarantee that every service publishes every metric each minute; for example, basic EC2 monitoring publishes at five-minute resolution. `period` controls CloudWatch aggregation and does not by itself reduce how often YACE calls AWS.
 
@@ -117,4 +146,4 @@ If one deployment mixes one-minute and five-minute publication cadences, changin
 5. Review partial/unallocated owners, failed batches, scrape gaps, and duplicate collection. Do not represent missing counters as zero usage.
 6. Promote independently to int, stage, and prod only after lower-environment validation and required approvals. Image pin and flag changes belong in separate environment PRs; no image is built or deployed by this source PR.
 
-Rollback is removing `owner-metering` and/or restoring the previous image. No existing metric names or job definitions need to change.
+Rollback is removing `owner-metric-filtering`, removing `owner-metering`, and/or restoring the previous image. No existing metric names or job definitions need to change.

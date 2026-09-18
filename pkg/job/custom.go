@@ -21,7 +21,7 @@ func runCustomNamespaceJob(
 	ownerTagClient tagging.Client,
 	accountID, region string,
 	metricsPerQuery int,
-	ownerMetricExclusions []model.OwnerMetricExclusion,
+	deploymentOwnerPolicy *model.OwnerPolicy,
 ) []*model.CloudwatchData {
 	cloudwatchDatas := getMetricDataForQueriesForCustomNamespace(ctx, job, clientCloudwatch, logger)
 	if len(cloudwatchDatas) == 0 {
@@ -31,9 +31,9 @@ func runCustomNamespaceJob(
 
 	enrichCustomNamespaceOwners(ctx, logger, job.Namespace, accountID, region, cloudwatchDatas, ownerTagClient)
 	if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
-		getmetricdata.RecordPreExclusionMetering(cloudwatchDatas, metricsPerQuery, accountID, region, job.Namespace)
+		getmetricdata.RecordPreFilterMetering(cloudwatchDatas, metricsPerQuery, accountID, region, job.Namespace)
 	}
-	cloudwatchDatas = applyOwnerMetricExclusions(ctx, accountID, region, ownerMetricExclusions, cloudwatchDatas)
+	cloudwatchDatas = applyOwnerPolicies(ctx, accountID, region, deploymentOwnerPolicy, job.OwnerPolicy, cloudwatchDatas)
 	if len(cloudwatchDatas) == 0 {
 		return nil
 	}
@@ -93,6 +93,7 @@ func getMetricDataForQueriesForCustomNamespace(
 								AddCloudwatchTimestamp: metric.AddCloudwatchTimestamp,
 							},
 							Tags:                      nil,
+							OwnerPolicy:               metric.OwnerPolicy,
 							GetMetricDataResult:       nil,
 							GetMetricStatisticsResult: nil,
 						})

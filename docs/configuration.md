@@ -57,35 +57,72 @@ static:
 customNamespace:
   [ - <custom_namespace_job_config> ... ]
 
-# Optional resource-owner rules for excluding direct GetMetricData queries
-ownerMetricExclusions:
-  [ - <owner_metric_exclusion_config> ... ]
+# Optional deployment-level resource-owner policy for direct GetMetricData queries
+[ ownerPolicy: <owner_policy_config> ]
 ```
 
 Note that while the `discovery`, `static` and `customNamespace` blocks are all optionals, at least one of them must be defined.
 
-### `owner_metric_exclusion_config`
+### `owner_policy_config`
 
-Owner metric exclusions are disabled unless both `owner-metering` and `owner-metric-exclusions` feature flags are enabled. They apply to GetMetricData entries from discovery and supported custom-namespace jobs after exact AWS resource ownership resolution. They do not apply to static jobs, unmatched resources, or exported labels.
+Owner policy filtering is disabled unless both `owner-metering` and `owner-metric-filtering` feature flags are enabled. Policies may be set at the deployment, discovery/custom-namespace job, and metric levels. A query is collected only when every configured level allows its owner; a narrower level cannot restore access removed by a broader level. Omitting a policy imposes no additional restriction, so existing configurations retain their current behavior.
 
-Every selector is a Go/RE2 regular expression. `namespace` and `metricName` are required. At least one owner selector is required; omitted owner fields are not considered. A selected owner field must exist as a literal `omd_business_service`, `omd_service`, or `omd_component` tag on the matched AWS resource. Missing, `_unknown`, `_unallocated`, or conflicting selected tags never match, including when the configured expression is `.*`. Anchor expressions when exact matching is intended.
+Each policy uses one of two modes:
 
 ```yaml
-ownerMetricExclusions:
-  - namespace: '^AWS/EC2$'
-    metricName: '^CPUUtilization$'
-    owner:
-      businessService: '^commerce$'
-      service: '^payments$'
-      component: '^worker$'
-
-  - namespace: '^AmazonMWAA$'
-    metricName: '^DAGDuration\.Success$'
-    owner:
-      component: '^mlg-mwaa-v2$'
+# Collect for every owner except the listed owner hierarchies.
+ownerPolicy:
+  mode: allOwners
+  except:
+    - businessService: playback-services
+    - businessService: commerce
+      service: checkout-platform
+      component: payment-api
 ```
 
-The second rule intentionally uses only a component selector. Subset selectors are broader: they can match identical component values under multiple services or business services. Prefer anchored expressions and the complete owner tuple for generated production rules. Exclusions remove all matching statistics for that direct metric before GMD batching. Use `yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` to audit excluded query objects; it is not a billing-unit or savings counter. Compare `yace_cloudwatch_getmetricdata_owner_pre_exclusion_estimated_metric_requests_total` with submitted estimated metric requests to estimate avoided billing units. Existing `aws_*` metrics disappear when their backing query is excluded; the owner metering submitted-request counters do not count excluded objects.
+```yaml
+# Collect only for the listed owner hierarchies.
+ownerPolicy:
+  mode: selectedOwners
+  owners:
+    - businessService: observability
+      service: metrics-as-a-service
+    - businessService: commerce
+      service: checkout-platform
+      component: order-worker
+```
+
+Selectors are exact strings, not regular expressions. `businessService` is required. `service` is optional and selects all components below that service; `component` is optional but requires its parent service. A business-service-only selector includes every service and component below it. `_unknown` and `_unallocated` cannot be selected.
+
+The following example applies cumulative restrictions at all three supported levels:
+
+```yaml
+ownerPolicy:
+  mode: allOwners
+  except:
+    - businessService: media-supply-chain
+
+discovery:
+  jobs:
+    - type: AWS/EC2
+      ownerPolicy:
+        mode: allOwners
+        except:
+          - businessService: playback-services
+      metrics:
+        - name: CPUUtilization
+          statistics:
+            - Average
+          ownerPolicy:
+            mode: selectedOwners
+            owners:
+              - businessService: observability
+                service: metrics-as-a-service
+```
+
+Filtering applies after exact AWS resource ownership resolution and before GMD batching. It covers direct GetMetricData entries from discovery jobs and supported custom-namespace jobs; static jobs do not support owner policies. If any canonical OMD owner field is missing, empty, `_unknown`, `_unallocated`, or conflicting, the query fails open and remains collected. Policies never infer ownership from exported labels, resource names, legacy tags, job names, accounts, or exporter metadata.
+
+All statistics for a denied metric identity are removed. `yace_cloudwatch_getmetricdata_owner_excluded_query_objects_total` audits removed query objects but is not a billing-unit or savings counter. Compare `yace_cloudwatch_getmetricdata_owner_pre_filter_estimated_metric_requests_total` with submitted estimated metric requests to estimate avoided billing units. Existing `aws_*` series stop updating when their backing query is filtered; submitted-request counters do not include filtered objects.
 
 ### `discovery_jobs_list_config`
 
@@ -144,6 +181,9 @@ dimensionNameRequirements:
 # Can be used to include contextual information (account_id, region, and customTags) on info metrics and cloudwatch metrics. This can be particularly 
 # useful when cloudwatch metrics might not be present or when using info metrics to understand where your resources exist
 [ includeContextOnInfoMetrics: <boolean> ]
+
+# Optional job-level resource-owner policy
+[ ownerPolicy: <owner_policy_config> ]
 
 # List of statistic types, e.g. "Minimum", "Maximum", etc (General Setting for all metrics in this job)
 statistics:
@@ -219,7 +259,7 @@ customTags:
 # CloudWatch metric dimensions as a list of Name/Value pairs
 dimensions: [ <dimensions_config> ]
 
-# List of metric definitions
+# List of metric definitions. ownerPolicy is not supported for static-job metrics.
 metrics:
   [ - <metric_config> ... ]
 ```
@@ -283,6 +323,9 @@ dimensionNameRequirements:
 # Passes down the flag `--recently-active PT3H` to the CloudWatch API. This will only return metrics that have been active in the last 3 hours.
 # This is useful for reducing the number of metrics returned by CloudWatch, which can be very large for some services. See AWS Cloudwatch API docs for [ListMetrics](https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_ListMetrics.html) for more details.
 [ recentlyActiveOnly: <boolean> ]
+
+# Optional job-level resource-owner policy
+[ ownerPolicy: <owner_policy_config> ]
 
 # List of statistic types, e.g. "Minimum", "Maximum", etc (General Setting for all metrics in this job)
 statistics:
@@ -360,6 +403,9 @@ statistics:
 
 # Export the metric with the original CloudWatch timestamp (Overrides job level setting)
 [ addCloudwatchTimestamp: <boolean> ]
+
+# Optional metric-level resource-owner policy for discovery and custom-namespace jobs
+[ ownerPolicy: <owner_policy_config> ]
 ```
 
 Notes:

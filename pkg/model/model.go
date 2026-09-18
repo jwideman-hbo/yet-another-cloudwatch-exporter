@@ -11,20 +11,29 @@ const (
 	DefaultLengthSeconds = int64(300)
 )
 
+const (
+	OwnerPolicyModeAllOwners      = "allOwners"
+	OwnerPolicyModeSelectedOwners = "selectedOwners"
+)
+
 type JobsConfig struct {
-	StsRegion             string
-	DiscoveryJobs         []DiscoveryJob
-	StaticJobs            []StaticJob
-	CustomNamespaceJobs   []CustomNamespaceJob
-	OwnerMetricExclusions []OwnerMetricExclusion
+	StsRegion           string
+	DiscoveryJobs       []DiscoveryJob
+	StaticJobs          []StaticJob
+	CustomNamespaceJobs []CustomNamespaceJob
+	OwnerPolicy         *OwnerPolicy
 }
 
-type OwnerMetricExclusion struct {
-	Namespace            *regexp.Regexp
-	MetricName           *regexp.Regexp
-	OwnerBusinessService *regexp.Regexp
-	OwnerService         *regexp.Regexp
-	OwnerComponent       *regexp.Regexp
+type OwnerPolicy struct {
+	Mode   string
+	Owners []OwnerSelector
+	Except []OwnerSelector
+}
+
+type OwnerSelector struct {
+	BusinessService string
+	Service         string
+	Component       string
 }
 
 type DiscoveryJob struct {
@@ -40,6 +49,7 @@ type DiscoveryJob struct {
 	ExportedTagsOnMetrics       []string
 	IncludeContextOnInfoMetrics bool
 	DimensionsRegexps           []DimensionsRegexp
+	OwnerPolicy                 *OwnerPolicy
 	JobLevelMetricFields
 }
 
@@ -63,6 +73,7 @@ type CustomNamespaceJob struct {
 	Metrics                   []*MetricConfig
 	CustomTags                []Tag
 	DimensionNameRequirements []string
+	OwnerPolicy               *OwnerPolicy
 	JobLevelMetricFields
 }
 
@@ -88,6 +99,7 @@ type MetricConfig struct {
 	Delay                  int64
 	NilToZero              bool
 	AddCloudwatchTimestamp bool
+	OwnerPolicy            *OwnerPolicy
 }
 
 type DimensionsRegexp struct {
@@ -171,6 +183,7 @@ type CloudwatchData struct {
 	Namespace    string
 	Tags         []Tag
 	OwnerTags    []Tag
+	OwnerPolicy  *OwnerPolicy
 	Dimensions   []Dimension
 	// GetMetricDataProcessingParams includes necessary fields to run GetMetricData
 	GetMetricDataProcessingParams *GetMetricDataProcessingParams

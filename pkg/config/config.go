@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/grafana/regexp"
@@ -14,18 +15,18 @@ import (
 )
 
 type ScrapeConf struct {
-	APIVersion            string                 `yaml:"apiVersion"`
-	StsRegion             string                 `yaml:"sts-region"`
-	Discovery             Discovery              `yaml:"discovery"`
-	Static                []*Static              `yaml:"static"`
-	CustomNamespace       []*CustomNamespace     `yaml:"customNamespace"`
-	OwnerMetricExclusions []OwnerMetricExclusion `yaml:"ownerMetricExclusions"`
+	APIVersion      string             `yaml:"apiVersion"`
+	StsRegion       string             `yaml:"sts-region"`
+	Discovery       Discovery          `yaml:"discovery"`
+	Static          []*Static          `yaml:"static"`
+	CustomNamespace []*CustomNamespace `yaml:"customNamespace"`
+	OwnerPolicy     *OwnerPolicy       `yaml:"ownerPolicy"`
 }
 
-type OwnerMetricExclusion struct {
-	Namespace  string        `yaml:"namespace"`
-	MetricName string        `yaml:"metricName"`
-	Owner      OwnerSelector `yaml:"owner"`
+type OwnerPolicy struct {
+	Mode   string          `yaml:"mode"`
+	Owners []OwnerSelector `yaml:"owners"`
+	Except []OwnerSelector `yaml:"except"`
 }
 
 type OwnerSelector struct {
@@ -56,16 +57,17 @@ type JobLevelMetricFields struct {
 }
 
 type Job struct {
-	Regions                     []string  `yaml:"regions"`
-	Type                        string    `yaml:"type"`
-	Roles                       []Role    `yaml:"roles"`
-	SearchTags                  []Tag     `yaml:"searchTags"`
-	CustomTags                  []Tag     `yaml:"customTags"`
-	DimensionNameRequirements   []string  `yaml:"dimensionNameRequirements"`
-	Metrics                     []*Metric `yaml:"metrics"`
-	RoundingPeriod              *int64    `yaml:"roundingPeriod"`
-	RecentlyActiveOnly          bool      `yaml:"recentlyActiveOnly"`
-	IncludeContextOnInfoMetrics bool      `yaml:"includeContextOnInfoMetrics"`
+	Regions                     []string     `yaml:"regions"`
+	Type                        string       `yaml:"type"`
+	Roles                       []Role       `yaml:"roles"`
+	SearchTags                  []Tag        `yaml:"searchTags"`
+	CustomTags                  []Tag        `yaml:"customTags"`
+	DimensionNameRequirements   []string     `yaml:"dimensionNameRequirements"`
+	Metrics                     []*Metric    `yaml:"metrics"`
+	RoundingPeriod              *int64       `yaml:"roundingPeriod"`
+	RecentlyActiveOnly          bool         `yaml:"recentlyActiveOnly"`
+	IncludeContextOnInfoMetrics bool         `yaml:"includeContextOnInfoMetrics"`
+	OwnerPolicy                 *OwnerPolicy `yaml:"ownerPolicy"`
 	JobLevelMetricFields        `yaml:",inline"`
 }
 
@@ -80,26 +82,28 @@ type Static struct {
 }
 
 type CustomNamespace struct {
-	Regions                   []string  `yaml:"regions"`
-	Name                      string    `yaml:"name"`
-	Namespace                 string    `yaml:"namespace"`
-	RecentlyActiveOnly        bool      `yaml:"recentlyActiveOnly"`
-	Roles                     []Role    `yaml:"roles"`
-	Metrics                   []*Metric `yaml:"metrics"`
-	CustomTags                []Tag     `yaml:"customTags"`
-	DimensionNameRequirements []string  `yaml:"dimensionNameRequirements"`
-	RoundingPeriod            *int64    `yaml:"roundingPeriod"`
+	Regions                   []string     `yaml:"regions"`
+	Name                      string       `yaml:"name"`
+	Namespace                 string       `yaml:"namespace"`
+	RecentlyActiveOnly        bool         `yaml:"recentlyActiveOnly"`
+	Roles                     []Role       `yaml:"roles"`
+	Metrics                   []*Metric    `yaml:"metrics"`
+	CustomTags                []Tag        `yaml:"customTags"`
+	DimensionNameRequirements []string     `yaml:"dimensionNameRequirements"`
+	RoundingPeriod            *int64       `yaml:"roundingPeriod"`
+	OwnerPolicy               *OwnerPolicy `yaml:"ownerPolicy"`
 	JobLevelMetricFields      `yaml:",inline"`
 }
 
 type Metric struct {
-	Name                   string   `yaml:"name"`
-	Statistics             []string `yaml:"statistics"`
-	Period                 int64    `yaml:"period"`
-	Length                 int64    `yaml:"length"`
-	Delay                  int64    `yaml:"delay"`
-	NilToZero              *bool    `yaml:"nilToZero"`
-	AddCloudwatchTimestamp *bool    `yaml:"addCloudwatchTimestamp"`
+	Name                   string       `yaml:"name"`
+	Statistics             []string     `yaml:"statistics"`
+	Period                 int64        `yaml:"period"`
+	Length                 int64        `yaml:"length"`
+	Delay                  int64        `yaml:"delay"`
+	NilToZero              *bool        `yaml:"nilToZero"`
+	AddCloudwatchTimestamp *bool        `yaml:"addCloudwatchTimestamp"`
+	OwnerPolicy            *OwnerPolicy `yaml:"ownerPolicy"`
 }
 
 type Dimension struct {
@@ -154,10 +158,8 @@ func (c *ScrapeConf) Load(file string, logger logging.Logger) (model.JobsConfig,
 }
 
 func (c *ScrapeConf) Validate(logger logging.Logger) (model.JobsConfig, error) {
-	for idx, exclusion := range c.OwnerMetricExclusions {
-		if err := exclusion.validate(idx); err != nil {
-			return model.JobsConfig{}, err
-		}
+	if err := c.OwnerPolicy.validate("Top-level owner policy"); err != nil {
+		return model.JobsConfig{}, err
 	}
 
 	if c.Discovery.Jobs == nil && c.Static == nil && c.CustomNamespace == nil {
@@ -219,36 +221,64 @@ func (c *ScrapeConf) Validate(logger logging.Logger) (model.JobsConfig, error) {
 	return c.toModelConfig(), nil
 }
 
-func (e OwnerMetricExclusion) validate(idx int) error {
-	patterns := []struct {
-		name     string
-		value    string
-		required bool
-	}{
-		{"namespace", e.Namespace, true},
-		{"metricName", e.MetricName, true},
-		{"owner.businessService", e.Owner.BusinessService, false},
-		{"owner.service", e.Owner.Service, false},
-		{"owner.component", e.Owner.Component, false},
+func (p *OwnerPolicy) validate(parent string) error {
+	if p == nil {
+		return nil
 	}
-	if e.Owner.BusinessService == "" && e.Owner.Service == "" && e.Owner.Component == "" {
-		return fmt.Errorf("Owner metric exclusion [%d]: at least one owner selector is required", idx)
+	var selectors []OwnerSelector
+	switch p.Mode {
+	case model.OwnerPolicyModeAllOwners:
+		if len(p.Owners) > 0 {
+			return fmt.Errorf("%s: owners cannot be set in allOwners mode", parent)
+		}
+		selectors = p.Except
+	case model.OwnerPolicyModeSelectedOwners:
+		if len(p.Except) > 0 {
+			return fmt.Errorf("%s: except cannot be set in selectedOwners mode", parent)
+		}
+		if len(p.Owners) == 0 {
+			return fmt.Errorf("%s: owners must not be empty in selectedOwners mode", parent)
+		}
+		selectors = p.Owners
+	default:
+		return fmt.Errorf("%s: mode must be allOwners or selectedOwners", parent)
 	}
-	for _, pattern := range patterns {
-		if pattern.value == "" {
-			if pattern.required {
-				return fmt.Errorf("Owner metric exclusion [%d]: %s should not be empty", idx, pattern.name)
+
+	seen := make(map[OwnerSelector]struct{}, len(selectors))
+	for idx, selector := range selectors {
+		if selector.BusinessService == "" {
+			return fmt.Errorf("%s owner selector [%d]: businessService must not be empty", parent, idx)
+		}
+		if selector.Component != "" && selector.Service == "" {
+			return fmt.Errorf("%s owner selector [%d]: component requires service", parent, idx)
+		}
+		for _, field := range [...]struct {
+			name  string
+			value string
+		}{
+			{name: "businessService", value: selector.BusinessService},
+			{name: "service", value: selector.Service},
+			{name: "component", value: selector.Component},
+		} {
+			if field.value != strings.TrimSpace(field.value) {
+				return fmt.Errorf("%s owner selector [%d]: %s must not contain surrounding whitespace", parent, idx, field.name)
 			}
-			continue
+			if field.value == "_unknown" || field.value == "_unallocated" {
+				return fmt.Errorf("%s owner selector [%d]: %s cannot select %s", parent, idx, field.name, field.value)
+			}
 		}
-		if _, err := regexp.Compile(pattern.value); err != nil {
-			return fmt.Errorf("Owner metric exclusion [%d]: %s has invalid regex value %s: %w", idx, pattern.name, pattern.value, err)
+		if _, duplicate := seen[selector]; duplicate {
+			return fmt.Errorf("%s owner selector [%d]: duplicate owner selector", parent, idx)
 		}
+		seen[selector] = struct{}{}
 	}
 	return nil
 }
 
 func (j *Job) validateDiscoveryJob(logger logging.Logger, jobIdx int) error {
+	if err := j.OwnerPolicy.validate(fmt.Sprintf("Discovery job [%d] owner policy", jobIdx)); err != nil {
+		return err
+	}
 	if j.Type != "" {
 		if svc := SupportedServices.GetService(j.Type); svc == nil {
 			if svc = SupportedServices.getServiceByAlias(j.Type); svc != nil {
@@ -296,6 +326,9 @@ func (j *Job) validateDiscoveryJob(logger logging.Logger, jobIdx int) error {
 }
 
 func (j *CustomNamespace) validateCustomNamespaceJob(logger logging.Logger, jobIdx int) error {
+	if err := j.OwnerPolicy.validate(fmt.Sprintf("CustomNamespace job [%d] owner policy", jobIdx)); err != nil {
+		return err
+	}
 	if j.Name == "" {
 		return fmt.Errorf("CustomNamespace job [%v]: Name should not be empty", jobIdx)
 	}
@@ -352,6 +385,9 @@ func (j *Static) validateStaticJob(logger logging.Logger, jobIdx int) error {
 		return fmt.Errorf("Static job [%s/%d]: Regions should not be empty", j.Name, jobIdx)
 	}
 	for metricIdx, metric := range j.Metrics {
+		if metric.OwnerPolicy != nil {
+			return fmt.Errorf("Metric [%s/%d] in %v: ownerPolicy is not supported for static jobs", metric.Name, metricIdx, parent)
+		}
 		err := metric.validateMetric(logger, metricIdx, parent, nil)
 		if err != nil {
 			return err
@@ -362,6 +398,9 @@ func (j *Static) validateStaticJob(logger logging.Logger, jobIdx int) error {
 }
 
 func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent string, discovery *JobLevelMetricFields) error {
+	if err := m.OwnerPolicy.validate(fmt.Sprintf("Metric [%s/%d] in %v owner policy", m.Name, metricIdx, parent)); err != nil {
+		return err
+	}
 	if m.Name == "" {
 		return fmt.Errorf("Metric [%s/%d] in %v: Name should not be empty", m.Name, metricIdx, parent)
 	}
@@ -442,7 +481,7 @@ func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent str
 func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 	jobsCfg := model.JobsConfig{}
 	jobsCfg.StsRegion = c.StsRegion
-	jobsCfg.OwnerMetricExclusions = toModelOwnerMetricExclusions(c.OwnerMetricExclusions)
+	jobsCfg.OwnerPolicy = toModelOwnerPolicy(c.OwnerPolicy)
 
 	for _, discoveryJob := range c.Discovery.Jobs {
 		svc := SupportedServices.GetService(discoveryJob.Type)
@@ -465,6 +504,7 @@ func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 		job.Metrics = toModelMetricConfig(discoveryJob.Metrics)
 		job.IncludeContextOnInfoMetrics = discoveryJob.IncludeContextOnInfoMetrics
 		job.DimensionsRegexps = svc.ToModelDimensionsRegexp()
+		job.OwnerPolicy = toModelOwnerPolicy(discoveryJob.OwnerPolicy)
 
 		job.ExportedTagsOnMetrics = []string{}
 		if len(c.Discovery.ExportedTagsOnMetrics) > 0 {
@@ -505,29 +545,35 @@ func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 		job.Roles = toModelRoles(customNamespaceJob.Roles)
 		job.CustomTags = toModelTags(customNamespaceJob.CustomTags)
 		job.Metrics = toModelMetricConfig(customNamespaceJob.Metrics)
+		job.OwnerPolicy = toModelOwnerPolicy(customNamespaceJob.OwnerPolicy)
 		jobsCfg.CustomNamespaceJobs = append(jobsCfg.CustomNamespaceJobs, job)
 	}
 
 	return jobsCfg
 }
 
-func toModelOwnerMetricExclusions(exclusions []OwnerMetricExclusion) []model.OwnerMetricExclusion {
-	ret := make([]model.OwnerMetricExclusion, 0, len(exclusions))
-	for _, exclusion := range exclusions {
-		modelExclusion := model.OwnerMetricExclusion{
-			Namespace:  regexp.MustCompile(exclusion.Namespace),
-			MetricName: regexp.MustCompile(exclusion.MetricName),
-		}
-		if exclusion.Owner.BusinessService != "" {
-			modelExclusion.OwnerBusinessService = regexp.MustCompile(exclusion.Owner.BusinessService)
-		}
-		if exclusion.Owner.Service != "" {
-			modelExclusion.OwnerService = regexp.MustCompile(exclusion.Owner.Service)
-		}
-		if exclusion.Owner.Component != "" {
-			modelExclusion.OwnerComponent = regexp.MustCompile(exclusion.Owner.Component)
-		}
-		ret = append(ret, modelExclusion)
+func toModelOwnerPolicy(policy *OwnerPolicy) *model.OwnerPolicy {
+	if policy == nil {
+		return nil
+	}
+	return &model.OwnerPolicy{
+		Mode:   policy.Mode,
+		Owners: toModelOwnerSelectors(policy.Owners),
+		Except: toModelOwnerSelectors(policy.Except),
+	}
+}
+
+func toModelOwnerSelectors(selectors []OwnerSelector) []model.OwnerSelector {
+	if selectors == nil {
+		return nil
+	}
+	ret := make([]model.OwnerSelector, 0, len(selectors))
+	for _, selector := range selectors {
+		ret = append(ret, model.OwnerSelector{
+			BusinessService: selector.BusinessService,
+			Service:         selector.Service,
+			Component:       selector.Component,
+		})
 	}
 	return ret
 }
@@ -589,6 +635,7 @@ func toModelMetricConfig(metrics []*Metric) []*model.MetricConfig {
 			Delay:                  m.Delay,
 			NilToZero:              aws.BoolValue(m.NilToZero),
 			AddCloudwatchTimestamp: aws.BoolValue(m.AddCloudwatchTimestamp),
+			OwnerPolicy:            toModelOwnerPolicy(m.OwnerPolicy),
 		})
 	}
 	return ret

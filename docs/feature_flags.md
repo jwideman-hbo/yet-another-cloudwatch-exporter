@@ -14,13 +14,13 @@ Uses the v2 version of the aws sdk for go. The sdk v2 version was released in Ja
 
 `-enable-feature=owner-metering`
 
-Expose resource-owner GetMetricData query-object counters plus pre-exclusion and submitted estimated metric-request units without changing collection. See [owner metering](owner-metering.md) for validated billing behavior, OMD coverage, savings reconciliation, and rollout guidance.
+Expose resource-owner GetMetricData query-object counters plus pre-filter and submitted estimated metric-request units without changing collection. See [owner metering](owner-metering.md) for validated billing behavior, OMD coverage, savings reconciliation, and rollout guidance.
 
-## Resource-owner metric exclusions
+## Resource-owner metric filtering
 
-`-enable-feature=owner-metering,owner-metric-exclusions`
+`-enable-feature=owner-metering,owner-metric-filtering`
 
-Exclude configured GetMetricData query objects only after exact resource-owner OMD resolution. Both feature flags and at least one valid top-level `ownerMetricExclusions` rule are required. Missing selected owner tags and static jobs are retained. See [owner metering](owner-metering.md#owner-metric-exclusions) and [configuration](configuration.md#owner_metric_exclusion_config).
+Apply cumulative deployment, job, and metric owner policies to direct GetMetricData queries after exact resource-owner OMD resolution. Selectors are exact hierarchical OMD tuples; incomplete ownership fails open, and static jobs are unchanged. See [owner metering](owner-metering.md#owner-metric-filtering) and [configuration](configuration.md#owner_policy_config).
 
 ## Always return info metrics
 

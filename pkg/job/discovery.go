@@ -34,7 +34,7 @@ func runDiscoveryJob(
 	gmdProcessor getMetricDataProcessor,
 	accountID string,
 	metricsPerQuery int,
-	ownerMetricExclusions []model.OwnerMetricExclusion,
+	deploymentOwnerPolicy *model.OwnerPolicy,
 ) ([]*model.TaggedResource, []*model.CloudwatchData) {
 	logger.Debug("Get tagged resources")
 
@@ -61,9 +61,9 @@ func runDiscoveryJob(
 
 	enrichDiscoveryOwners(ctx, svc.Namespace, accountID, region, getMetricDatas, resources)
 	if config.FlagsFromCtx(ctx).IsFeatureEnabled(config.OwnerMetering) {
-		getmetricdata.RecordPreExclusionMetering(getMetricDatas, metricsPerQuery, accountID, region, svc.Namespace)
+		getmetricdata.RecordPreFilterMetering(getMetricDatas, metricsPerQuery, accountID, region, svc.Namespace)
 	}
-	getMetricDatas = applyOwnerMetricExclusions(ctx, accountID, region, ownerMetricExclusions, getMetricDatas)
+	getMetricDatas = applyOwnerPolicies(ctx, accountID, region, deploymentOwnerPolicy, job.OwnerPolicy, getMetricDatas)
 	if len(getMetricDatas) == 0 {
 		return resources, nil
 	}
@@ -194,6 +194,7 @@ func getFilteredMetricDatas(
 					AddCloudwatchTimestamp: m.AddCloudwatchTimestamp,
 				},
 				Tags:                      metricTags,
+				OwnerPolicy:               m.OwnerPolicy,
 				GetMetricDataResult:       nil,
 				GetMetricStatisticsResult: nil,
 			})
