@@ -112,7 +112,7 @@ var ServiceFilters = map[string]ServiceFilter{
 						resource.Tags = append(resource.Tags, model.Tag{Key: *t.Key, Value: *t.Value})
 					}
 
-					if resource.FilterThroughTags(job.SearchTags) {
+					if resource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 						resources = append(resources, &resource)
 					}
 				}
@@ -205,7 +205,7 @@ var ServiceFilters = map[string]ServiceFilter{
 						resource.Tags = append(resource.Tags, model.Tag{Key: *t.Key, Value: *t.Value})
 					}
 
-					if resource.FilterThroughTags(job.SearchTags) {
+					if resource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 						resources = append(resources, &resource)
 					}
 				}
@@ -240,7 +240,7 @@ var ServiceFilters = map[string]ServiceFilter{
 						resource.Tags = append(resource.Tags, model.Tag{Key: key, Value: value})
 					}
 
-					if resource.FilterThroughTags(job.SearchTags) {
+					if resource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 						resources = append(resources, &resource)
 					}
 				}
@@ -281,7 +281,7 @@ var ServiceFilters = map[string]ServiceFilter{
 						resource.Tags = append(resource.Tags, model.Tag{Key: *t.Key, Value: *t.Value})
 					}
 
-					if resource.FilterThroughTags(job.SearchTags) {
+					if resource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 						resources = append(resources, &resource)
 					}
 				}
@@ -316,7 +316,7 @@ var ServiceFilters = map[string]ServiceFilter{
 						resource.Tags = append(resource.Tags, model.Tag{Key: *t.Key, Value: *t.Value})
 					}
 
-					if resource.FilterThroughTags(job.SearchTags) {
+					if resource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 						resources = append(resources, &resource)
 					}
 				}
@@ -371,7 +371,9 @@ var ServiceFilters = map[string]ServiceFilter{
 							Region:    region,
 							Tags:      []model.Tag{{Key: "ProtectionArn", Value: protectionArn}},
 						}
-						output = append(output, taggedResource)
+						if taggedResource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
+							output = append(output, taggedResource)
+						}
 					}
 				}
 			}

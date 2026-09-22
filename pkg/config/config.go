@@ -47,6 +47,7 @@ type Job struct {
 	Type                        string    `yaml:"type"`
 	Roles                       []Role    `yaml:"roles"`
 	SearchTags                  []Tag     `yaml:"searchTags"`
+	ExcludeTags                 []Tag     `yaml:"excludeTags"`
 	CustomTags                  []Tag     `yaml:"customTags"`
 	DimensionNameRequirements   []string  `yaml:"dimensionNameRequirements"`
 	Metrics                     []*Metric `yaml:"metrics"`
@@ -81,6 +82,8 @@ type CustomNamespace struct {
 
 type Metric struct {
 	Name                   string   `yaml:"name"`
+	SearchTags             []Tag    `yaml:"searchTags"`
+	ExcludeTags            []Tag    `yaml:"excludeTags"`
 	Statistics             []string `yaml:"statistics"`
 	Period                 int64    `yaml:"period"`
 	Length                 int64    `yaml:"length"`
@@ -228,16 +231,14 @@ func (j *Job) validateDiscoveryJob(logger logging.Logger, jobIdx int) error {
 		return fmt.Errorf("Discovery job [%s/%d]: Metrics should not be empty", j.Type, jobIdx)
 	}
 	for metricIdx, metric := range j.Metrics {
-		err := metric.validateMetric(logger, metricIdx, parent, &j.JobLevelMetricFields)
+		err := metric.validateMetric(logger, metricIdx, parent, &j.JobLevelMetricFields, true)
 		if err != nil {
 			return err
 		}
 	}
 
-	for _, st := range j.SearchTags {
-		if _, err := regexp.Compile(st.Value); err != nil {
-			return fmt.Errorf("Discovery job [%s/%d]: search tag value for %s has invalid regex value %s: %w", j.Type, jobIdx, st.Key, st.Value, err)
-		}
+	if err := validateTagFilters(j.SearchTags, j.ExcludeTags, parent); err != nil {
+		return err
 	}
 
 	if j.RoundingPeriod != nil {
@@ -271,7 +272,7 @@ func (j *CustomNamespace) validateCustomNamespaceJob(logger logging.Logger, jobI
 		return fmt.Errorf("CustomNamespace job [%s/%d]: Metrics should not be empty", j.Name, jobIdx)
 	}
 	for metricIdx, metric := range j.Metrics {
-		err := metric.validateMetric(logger, metricIdx, parent, &j.JobLevelMetricFields)
+		err := metric.validateMetric(logger, metricIdx, parent, &j.JobLevelMetricFields, false)
 		if err != nil {
 			return err
 		}
@@ -304,7 +305,7 @@ func (j *Static) validateStaticJob(logger logging.Logger, jobIdx int) error {
 		return fmt.Errorf("Static job [%s/%d]: Regions should not be empty", j.Name, jobIdx)
 	}
 	for metricIdx, metric := range j.Metrics {
-		err := metric.validateMetric(logger, metricIdx, parent, nil)
+		err := metric.validateMetric(logger, metricIdx, parent, nil, false)
 		if err != nil {
 			return err
 		}
@@ -313,9 +314,16 @@ func (j *Static) validateStaticJob(logger logging.Logger, jobIdx int) error {
 	return nil
 }
 
-func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent string, discovery *JobLevelMetricFields) error {
+func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent string, discovery *JobLevelMetricFields, tagFiltersSupported bool) error {
+	metricParent := fmt.Sprintf("Metric [%s/%d] in %v", m.Name, metricIdx, parent)
 	if m.Name == "" {
-		return fmt.Errorf("Metric [%s/%d] in %v: Name should not be empty", m.Name, metricIdx, parent)
+		return fmt.Errorf("%s: Name should not be empty", metricParent)
+	}
+	if !tagFiltersSupported && (len(m.SearchTags) > 0 || len(m.ExcludeTags) > 0) {
+		return fmt.Errorf("%s: searchTags and excludeTags are only supported for discovery jobs", metricParent)
+	}
+	if err := validateTagFilters(m.SearchTags, m.ExcludeTags, metricParent); err != nil {
+		return err
 	}
 
 	mStatistics := m.Statistics
@@ -391,6 +399,20 @@ func (m *Metric) validateMetric(logger logging.Logger, metricIdx int, parent str
 	return nil
 }
 
+func validateTagFilters(searchTags, excludeTags []Tag, parent string) error {
+	for _, tag := range searchTags {
+		if _, err := regexp.Compile(tag.Value); err != nil {
+			return fmt.Errorf("%s: search tag value for %s has invalid regex value %s: %w", parent, tag.Key, tag.Value, err)
+		}
+	}
+	for _, tag := range excludeTags {
+		if _, err := regexp.Compile(tag.Value); err != nil {
+			return fmt.Errorf("%s: exclude tag value for %s has invalid regex value %s: %w", parent, tag.Key, tag.Value, err)
+		}
+	}
+	return nil
+}
+
 func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 	jobsCfg := model.JobsConfig{}
 	jobsCfg.StsRegion = c.StsRegion
@@ -412,6 +434,7 @@ func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 		job.AddCloudwatchTimestamp = discoveryJob.AddCloudwatchTimestamp
 		job.Roles = toModelRoles(discoveryJob.Roles)
 		job.SearchTags = toModelSearchTags(discoveryJob.SearchTags)
+		job.ExcludeTags = toModelSearchTags(discoveryJob.ExcludeTags)
 		job.CustomTags = toModelTags(discoveryJob.CustomTags)
 		job.Metrics = toModelMetricConfig(discoveryJob.Metrics)
 		job.IncludeContextOnInfoMetrics = discoveryJob.IncludeContextOnInfoMetrics
@@ -513,6 +536,8 @@ func toModelMetricConfig(metrics []*Metric) []*model.MetricConfig {
 	for _, m := range metrics {
 		ret = append(ret, &model.MetricConfig{
 			Name:                   m.Name,
+			SearchTags:             toModelSearchTags(m.SearchTags),
+			ExcludeTags:            toModelSearchTags(m.ExcludeTags),
 			Statistics:             m.Statistics,
 			Period:                 m.Period,
 			Length:                 m.Length,
