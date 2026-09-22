@@ -125,3 +125,82 @@ func TestValidateConfigFailuresWhenUsingAsLibrary(t *testing.T) {
 		})
 	}
 }
+
+func TestTagFilters(t *testing.T) {
+	config := ScrapeConf{
+		APIVersion: "v1alpha1",
+		Discovery: Discovery{Jobs: []*Job{{
+			Regions:     []string{"us-east-1"},
+			Type:        "AWS/SQS",
+			Roles:       []Role{{}},
+			SearchTags:  []Tag{{Key: "environment", Value: "^production$"}},
+			ExcludeTags: []Tag{{Key: "lifecycle", Value: "^(deprecated|retired)$"}},
+			Metrics: []*Metric{{
+				Name:        "NumberOfMessagesSent",
+				SearchTags:  []Tag{{Key: "service", Value: "^checkout$"}},
+				ExcludeTags: []Tag{{Key: "component", Value: "^legacy-worker$"}},
+				Statistics:  []string{"Average"},
+			}},
+		}}},
+	}
+
+	jobs, err := config.Validate(logging.NewNopLogger())
+	require.NoError(t, err)
+	require.Len(t, jobs.DiscoveryJobs, 1)
+	require.Len(t, jobs.DiscoveryJobs[0].ExcludeTags, 1)
+	require.True(t, jobs.DiscoveryJobs[0].ExcludeTags[0].Value.MatchString("deprecated"))
+	require.Len(t, jobs.DiscoveryJobs[0].Metrics, 1)
+	require.True(t, jobs.DiscoveryJobs[0].Metrics[0].SearchTags[0].Value.MatchString("checkout"))
+	require.True(t, jobs.DiscoveryJobs[0].Metrics[0].ExcludeTags[0].Value.MatchString("legacy-worker"))
+
+	config.Discovery.Jobs[0].ExcludeTags[0].Value = "["
+	_, err = config.Validate(logging.NewNopLogger())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exclude tag value for lifecycle has invalid regex")
+
+	config.Discovery.Jobs[0].ExcludeTags[0].Value = "^(deprecated|retired)$"
+	config.Discovery.Jobs[0].Metrics[0].SearchTags[0].Value = "["
+	_, err = config.Validate(logging.NewNopLogger())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "search tag value for service has invalid regex")
+}
+
+func TestMetricTagFiltersRequireDiscoveryJob(t *testing.T) {
+	metric := func() *Metric {
+		return &Metric{
+			Name:       "Requests",
+			SearchTags: []Tag{{Key: "service", Value: "^checkout$"}},
+			Statistics: []string{"Average"},
+		}
+	}
+	testCases := map[string]ScrapeConf{
+		"custom namespace": {
+			APIVersion: "v1alpha1",
+			CustomNamespace: []*CustomNamespace{{
+				Name:      "custom",
+				Namespace: "Custom/Namespace",
+				Regions:   []string{"us-east-1"},
+				Roles:     []Role{{}},
+				Metrics:   []*Metric{metric()},
+			}},
+		},
+		"static": {
+			APIVersion: "v1alpha1",
+			Static: []*Static{{
+				Name:      "static",
+				Namespace: "AWS/SQS",
+				Regions:   []string{"us-east-1"},
+				Roles:     []Role{{}},
+				Metrics:   []*Metric{metric()},
+			}},
+		},
+	}
+
+	for name, config := range testCases {
+		t.Run(name, func(t *testing.T) {
+			_, err := config.Validate(logging.NewNopLogger())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "searchTags and excludeTags are only supported for discovery jobs")
+		})
+	}
+}

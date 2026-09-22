@@ -3,6 +3,7 @@ package job
 import (
 	"testing"
 
+	"github.com/grafana/regexp"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/nerdswords/yet-another-cloudwatch-exporter/pkg/config"
@@ -431,6 +432,87 @@ func Test_getFilteredMetricDatas(t *testing.T) {
 				assert.Nil(t, got.GetMetricDataResult)
 				assert.Nil(t, got.GetMetricStatisticsResult)
 			}
+		})
+	}
+}
+
+func Test_getFilteredMetricDatasMetricTagFilters(t *testing.T) {
+	resource := &model.TaggedResource{
+		ARN: "arn:aws:ec2:us-east-1:123123123123:instance/i-1234567890abcdef0",
+		Tags: []model.Tag{
+			{Key: "environment", Value: "production"},
+			{Key: "service", Value: "checkout"},
+		},
+		Namespace: "ec2",
+		Region:    "us-east-1",
+	}
+	metric := &model.Metric{
+		MetricName: "CPUUtilization",
+		Dimensions: []model.Dimension{{Name: "InstanceId", Value: "i-1234567890abcdef0"}},
+		Namespace:  "AWS/EC2",
+	}
+	assoc := maxdimassociator.NewAssociator(
+		logging.NewNopLogger(),
+		config.SupportedServices.GetService("AWS/EC2").ToModelDimensionsRegexp(),
+		[]*model.TaggedResource{resource},
+	)
+
+	testCases := []struct {
+		name        string
+		searchTags  []model.SearchTag
+		excludeTags []model.SearchTag
+		expected    int
+	}{
+		{name: "no filters", expected: 1},
+		{
+			name: "all search tags match",
+			searchTags: []model.SearchTag{
+				{Key: "environment", Value: regexp.MustCompile("^production$")},
+				{Key: "service", Value: regexp.MustCompile("^checkout$")},
+			},
+			expected: 1,
+		},
+		{
+			name:       "search tag does not match",
+			searchTags: []model.SearchTag{{Key: "service", Value: regexp.MustCompile("^playback$")}},
+		},
+		{
+			name: "any exclude tag match excludes",
+			excludeTags: []model.SearchTag{
+				{Key: "environment", Value: regexp.MustCompile("^staging$")},
+				{Key: "service", Value: regexp.MustCompile("^checkout$")},
+			},
+		},
+		{
+			name:        "missing exclude tag does not match",
+			excludeTags: []model.SearchTag{{Key: "component", Value: regexp.MustCompile(".*")}},
+			expected:    1,
+		},
+		{
+			name:        "exclude takes precedence",
+			searchTags:  []model.SearchTag{{Key: "environment", Value: regexp.MustCompile("^production$")}},
+			excludeTags: []model.SearchTag{{Key: "service", Value: regexp.MustCompile("^checkout$")}},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			metricConfig := &model.MetricConfig{
+				Name:        "CPUUtilization",
+				SearchTags:  testCase.searchTags,
+				ExcludeTags: testCase.excludeTags,
+				Statistics:  []string{"Average"},
+			}
+			metricData := getFilteredMetricDatas(
+				logging.NewNopLogger(),
+				"ec2",
+				nil,
+				[]*model.Metric{metric},
+				nil,
+				metricConfig,
+				assoc,
+			)
+			assert.Len(t, metricData, testCase.expected)
 		})
 	}
 }

@@ -171,6 +171,56 @@ func Test_FilterThroughTags(t *testing.T) {
 	}
 }
 
+func Test_ShouldInclude(t *testing.T) {
+	resource := TaggedResource{Tags: []Tag{
+		{Key: "environment", Value: "production"},
+		{Key: "service", Value: "checkout"},
+	}}
+
+	testCases := []struct {
+		name        string
+		searchTags  []SearchTag
+		excludeTags []SearchTag
+		expected    bool
+	}{
+		{name: "no filters", expected: true},
+		{
+			name:       "all search tags match",
+			searchTags: []SearchTag{{Key: "environment", Value: regexp.MustCompile("^production$")}, {Key: "service", Value: regexp.MustCompile("^checkout$")}},
+			expected:   true,
+		},
+		{
+			name:       "search tag does not match",
+			searchTags: []SearchTag{{Key: "environment", Value: regexp.MustCompile("^development$")}},
+		},
+		{
+			name:        "any exclude tag match excludes",
+			excludeTags: []SearchTag{{Key: "environment", Value: regexp.MustCompile("^staging$")}, {Key: "service", Value: regexp.MustCompile("^checkout$")}},
+		},
+		{
+			name:        "exclude tag does not match",
+			excludeTags: []SearchTag{{Key: "service", Value: regexp.MustCompile("^playback$")}},
+			expected:    true,
+		},
+		{
+			name:        "missing exclude tag does not match",
+			excludeTags: []SearchTag{{Key: "component", Value: regexp.MustCompile(".*")}},
+			expected:    true,
+		},
+		{
+			name:        "exclude takes precedence over search",
+			searchTags:  []SearchTag{{Key: "environment", Value: regexp.MustCompile("^production$")}},
+			excludeTags: []SearchTag{{Key: "service", Value: regexp.MustCompile("^checkout$")}},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, resource.ShouldInclude(tc.searchTags, tc.excludeTags))
+		})
+	}
+}
+
 func Test_MetricTags(t *testing.T) {
 	testCases := []struct {
 		testName     string

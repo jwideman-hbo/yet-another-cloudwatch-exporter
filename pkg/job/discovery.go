@@ -162,6 +162,10 @@ func getFilteredMetricDatas(
 				Namespace: namespace,
 			}
 		}
+		if !resource.ShouldInclude(m.SearchTags, m.ExcludeTags) {
+			logger.Debug("skipping metric because metric tag filters do not match", "metric", m.Name, "resource", resource.ARN)
+			continue
+		}
 
 		metricTags := resource.MetricTags(tagsOnMetrics)
 		for _, stat := range m.Statistics {

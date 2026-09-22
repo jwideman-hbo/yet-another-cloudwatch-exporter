@@ -116,10 +116,10 @@ func (c client) GetResources(ctx context.Context, job model.DiscoveryJob, region
 					resource.Tags = append(resource.Tags, model.Tag{Key: *t.Key, Value: *t.Value})
 				}
 
-				if resource.FilterThroughTags(job.SearchTags) {
+				if resource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 					resources = append(resources, &resource)
 				} else {
-					c.logger.Debug("Skipping resource because search tags do not match", "arn", resource.ARN)
+					c.logger.Debug("Skipping resource because tag filters do not match", "arn", resource.ARN)
 				}
 			}
 		}

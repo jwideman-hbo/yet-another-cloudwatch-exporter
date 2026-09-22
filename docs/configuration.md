@@ -91,11 +91,18 @@ type: <string>
 roles:
   [ - <role_config> ... ]
 
-# List of Key/Value pairs to use for tag filtering (all must match). 
-# The key is the AWS Tag key and is case-sensitive  
+# List of Key/Value pairs to include in the entire job (all must match).
+# The key is the AWS Tag key and is case-sensitive
 # The value will be treated as a regex
 searchTags:
   [ - <search_tags_config> ... ]
+
+# List of Key/Value pairs to exclude from the entire job (any may match).
+# Exclusion takes precedence over searchTags. Missing tags do not match.
+# The key is the AWS Tag key and is case-sensitive
+# The value will be treated as a regex
+excludeTags:
+  [ - <exclude_tags_config> ... ]
 
 # Custom tags to be added as a list of Key/Value pairs
 customTags:
@@ -315,6 +322,16 @@ This allows for a specific setting to override a general setting.
 # CloudWatch metric name
 name: <string>
 
+# Additional Key/Value pairs to include for this metric (all must match).
+# Supported only for discovery jobs. Values are treated as regexes.
+searchTags:
+  [ - <search_tags_config> ... ]
+
+# Additional Key/Value pairs to exclude for this metric (any may match).
+# Supported only for discovery jobs. Missing tags do not match.
+excludeTags:
+  [ - <exclude_tags_config> ... ]
+
 # List of statistic types, e.g. "Minimum", "Maximum", etc. (Overrides job level setting)
 statistics:
   [ - <string> ... ]
@@ -336,6 +353,8 @@ statistics:
 ```
 
 Notes:
+- Metric-level `searchTags` and `excludeTags` are cumulative with the discovery job's filters. Job-level filters apply to every metric; metric-level filters apply only after a CloudWatch series is associated with its discovered resource. Exclusion takes precedence at both levels.
+
 - Available statistics: `Maximum`, `Minimum`, `Sum`, `SampleCount`, `Average`, `pXX` (e.g. `p90`).
 
 - Watch out using `addCloudwatchTimestamp` for sparse metrics, e.g from S3, since Prometheus won't scrape metrics containing timestamps older than 2-3 hours.
@@ -364,12 +383,26 @@ roles:
 
 ### `search_tags_config`
 
+Every configured entry must match. `searchTags` can be used at discovery job level and on individual metrics within a discovery job.
+
 This is an example of the `search_tags_config` block:
 
 ```yaml
 searchTags:
   - key: env
     value: production
+```
+
+### `exclude_tags_config`
+
+Any matching entry excludes the resource. Resources with a missing tag or a non-matching value are not excluded. `excludeTags` can be used at discovery job level and on individual metrics within a discovery job.
+
+```yaml
+excludeTags:
+  - key: lifecycle
+    value: ^(deprecated|retired)$
+  - key: environment
+    value: ^development$
 ```
 
 ### `custom_tags_config`
