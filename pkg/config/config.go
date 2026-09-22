@@ -47,6 +47,7 @@ type Job struct {
 	Type                        string    `yaml:"type"`
 	Roles                       []Role    `yaml:"roles"`
 	SearchTags                  []Tag     `yaml:"searchTags"`
+	ExcludeTags                 []Tag     `yaml:"excludeTags"`
 	CustomTags                  []Tag     `yaml:"customTags"`
 	DimensionNameRequirements   []string  `yaml:"dimensionNameRequirements"`
 	Metrics                     []*Metric `yaml:"metrics"`
@@ -239,6 +240,11 @@ func (j *Job) validateDiscoveryJob(logger logging.Logger, jobIdx int) error {
 			return fmt.Errorf("Discovery job [%s/%d]: search tag value for %s has invalid regex value %s: %w", j.Type, jobIdx, st.Key, st.Value, err)
 		}
 	}
+	for _, et := range j.ExcludeTags {
+		if _, err := regexp.Compile(et.Value); err != nil {
+			return fmt.Errorf("Discovery job [%s/%d]: exclude tag value for %s has invalid regex value %s: %w", j.Type, jobIdx, et.Key, et.Value, err)
+		}
+	}
 
 	if j.RoundingPeriod != nil {
 		logger.Warn(fmt.Sprintf("Discovery job [%s/%d]: Setting a rounding period is deprecated. In a future release it will always be enabled and set to the value of the metric period.", j.Type, jobIdx))
@@ -412,6 +418,7 @@ func (c *ScrapeConf) toModelConfig() model.JobsConfig {
 		job.AddCloudwatchTimestamp = discoveryJob.AddCloudwatchTimestamp
 		job.Roles = toModelRoles(discoveryJob.Roles)
 		job.SearchTags = toModelSearchTags(discoveryJob.SearchTags)
+		job.ExcludeTags = toModelSearchTags(discoveryJob.ExcludeTags)
 		job.CustomTags = toModelTags(discoveryJob.CustomTags)
 		job.Metrics = toModelMetricConfig(discoveryJob.Metrics)
 		job.IncludeContextOnInfoMetrics = discoveryJob.IncludeContextOnInfoMetrics

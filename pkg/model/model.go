@@ -23,6 +23,7 @@ type DiscoveryJob struct {
 	Type                        string
 	Roles                       []Role
 	SearchTags                  []SearchTag
+	ExcludeTags                 []SearchTag
 	CustomTags                  []Tag
 	DimensionNameRequirements   []string
 	Metrics                     []*MetricConfig
@@ -242,6 +243,22 @@ func (r TaggedResource) FilterThroughTags(filterTags []SearchTag) bool {
 	}
 
 	return tagFilterMatches == len(filterTags)
+}
+
+func (r TaggedResource) matchesAnyTag(filterTags []SearchTag) bool {
+	for _, resourceTag := range r.Tags {
+		for _, filterTag := range filterTags {
+			if resourceTag.Key == filterTag.Key && filterTag.Value.MatchString(resourceTag.Value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ShouldInclude returns true if all searchTags match and no excludeTags match.
+func (r TaggedResource) ShouldInclude(searchTags, excludeTags []SearchTag) bool {
+	return r.FilterThroughTags(searchTags) && !r.matchesAnyTag(excludeTags)
 }
 
 // MetricTags returns a list of tags built from the tags of

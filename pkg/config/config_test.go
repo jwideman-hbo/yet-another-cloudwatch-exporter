@@ -125,3 +125,31 @@ func TestValidateConfigFailuresWhenUsingAsLibrary(t *testing.T) {
 		})
 	}
 }
+
+func TestExcludeTags(t *testing.T) {
+	config := ScrapeConf{
+		APIVersion: "v1alpha1",
+		Discovery: Discovery{Jobs: []*Job{{
+			Regions:     []string{"us-east-1"},
+			Type:        "AWS/SQS",
+			Roles:       []Role{{}},
+			SearchTags:  []Tag{{Key: "environment", Value: "^production$"}},
+			ExcludeTags: []Tag{{Key: "lifecycle", Value: "^(deprecated|retired)$"}},
+			Metrics: []*Metric{{
+				Name:       "NumberOfMessagesSent",
+				Statistics: []string{"Average"},
+			}},
+		}}},
+	}
+
+	jobs, err := config.Validate(logging.NewNopLogger())
+	require.NoError(t, err)
+	require.Len(t, jobs.DiscoveryJobs, 1)
+	require.Len(t, jobs.DiscoveryJobs[0].ExcludeTags, 1)
+	require.True(t, jobs.DiscoveryJobs[0].ExcludeTags[0].Value.MatchString("deprecated"))
+
+	config.Discovery.Jobs[0].ExcludeTags[0].Value = "["
+	_, err = config.Validate(logging.NewNopLogger())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exclude tag value for lifecycle has invalid regex")
+}

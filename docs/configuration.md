@@ -91,11 +91,18 @@ type: <string>
 roles:
   [ - <role_config> ... ]
 
-# List of Key/Value pairs to use for tag filtering (all must match). 
-# The key is the AWS Tag key and is case-sensitive  
+# List of Key/Value pairs to use for tag filtering (all must match).
+# The key is the AWS Tag key and is case-sensitive
 # The value will be treated as a regex
 searchTags:
   [ - <search_tags_config> ... ]
+
+# List of Key/Value pairs to exclude from discovery (any may match).
+# Exclusion takes precedence over searchTags. Missing tags do not match.
+# The key is the AWS Tag key and is case-sensitive
+# The value will be treated as a regex
+excludeTags:
+  [ - <exclude_tags_config> ... ]
 
 # Custom tags to be added as a list of Key/Value pairs
 customTags:
@@ -370,6 +377,18 @@ This is an example of the `search_tags_config` block:
 searchTags:
   - key: env
     value: production
+```
+
+### `exclude_tags_config`
+
+Any matching entry excludes the resource. Resources with a missing tag or a non-matching value are not excluded.
+
+```yaml
+excludeTags:
+  - key: lifecycle
+    value: ^(deprecated|retired)$
+  - key: environment
+    value: ^development$
 ```
 
 ### `custom_tags_config`
