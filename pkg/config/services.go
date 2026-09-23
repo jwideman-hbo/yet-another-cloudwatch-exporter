@@ -102,10 +102,19 @@ var SupportedServices = serviceConfigs{
 		ResourceFilters: []*string{
 			aws.String("airflow"),
 		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile(":environment/(?P<Environment>[^/]+)$"),
+		},
 	},
 	{
 		Namespace: "AWS/MWAA",
 		Alias:     "mwaa",
+		ResourceFilters: []*string{
+			aws.String("airflow"),
+		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile(":environment/(?P<Environment>[^/]+)$"),
+		},
 	},
 	{
 		Namespace: "AWS/ApplicationELB",
@@ -218,6 +227,16 @@ var SupportedServices = serviceConfigs{
 		},
 	},
 	{
+		Namespace: "CloudWatchSynthetics",
+		Alias:     "synthetics",
+		ResourceFilters: []*string{
+			aws.String("synthetics:canary"),
+		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile(":canary:(?P<CanaryName>[^/]+)$"),
+		},
+	},
+	{
 		Namespace: "AWS/Cognito",
 		Alias:     "cognito-idp",
 		ResourceFilters: []*string{
@@ -237,6 +256,16 @@ var SupportedServices = serviceConfigs{
 		DimensionRegexps: []*regexp.Regexp{
 			regexp.MustCompile(":task/(?P<TaskId>[^/]+)"),
 			regexp.MustCompile(":agent/(?P<AgentId>[^/]+)"),
+		},
+	},
+	{
+		Namespace: "AWS/DAX",
+		Alias:     "dax",
+		ResourceFilters: []*string{
+			aws.String("dax:cache"),
+		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile(":cache/(?P<ClusterId>[^/]+)$"),
 		},
 	},
 	{
@@ -494,6 +523,16 @@ var SupportedServices = serviceConfigs{
 		},
 	},
 	{
+		Namespace: "AWS/Glue",
+		Alias:     "aws-glue",
+		ResourceFilters: []*string{
+			aws.String("glue:job"),
+		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile(":job/(?P<JobName>[^/]+)"),
+		},
+	},
+	{
 		Namespace: "AWS/IoT",
 		Alias:     "iot",
 		ResourceFilters: []*string{
@@ -661,6 +700,16 @@ var SupportedServices = serviceConfigs{
 		DimensionRegexps: []*regexp.Regexp{
 			regexp.MustCompile(":(?P<TargetGroup>targetgroup/.+)"),
 			regexp.MustCompile(":loadbalancer/(?P<LoadBalancer>.+)$"),
+		},
+	},
+	{
+		Namespace: "AWS/OSIS",
+		Alias:     "osis",
+		ResourceFilters: []*string{
+			aws.String("osis:pipeline"),
+		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile(":pipeline/(?P<PipelineName>[^/]+)$"),
 		},
 	},
 	{
@@ -944,6 +993,16 @@ var SupportedServices = serviceConfigs{
 	{
 		Namespace: "AWS/Bedrock",
 		Alias:     "bedrock",
+	},
+	{
+		Namespace: "AWS/Bedrock-AgentCore",
+		Alias:     "bedrock-agentcore",
+		ResourceFilters: []*string{
+			aws.String("bedrock-agentcore"),
+		},
+		DimensionRegexps: []*regexp.Regexp{
+			regexp.MustCompile("(?P<Resource>.+)"),
+		},
 	},
 	{
 		Namespace: "AWS/Events",
