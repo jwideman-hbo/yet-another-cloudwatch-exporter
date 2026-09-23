@@ -54,6 +54,7 @@ Only the latest version gets security updates. We won't support older versions.
   * `AWS/AutoScaling` - Auto Scaling Group
   * `AWS/Backup` - Backup
   * `AWS/Bedrock` - GenerativeAI
+  * `AWS/Bedrock-AgentCore` - Bedrock AgentCore
   * `AWS/Billing` - Billing
   * `AWS/Cassandra` - Cassandra
   * `AWS/CertificateManager` - Certificate Manager
@@ -61,6 +62,7 @@ Only the latest version gets security updates. We won't support older versions.
   * `AWS/CloudFront` - Cloud Front
   * `AWS/Cognito` - Cognito
   * `AWS/DataSync` - DataSync
+  * `AWS/DAX` - DynamoDB Accelerator
   * `AWS/DDoSProtection` - Distributed Denial of Service (DDoS) protection service
   * `AWS/DMS` - Database Migration Service
   * `AWS/DocDB` - DocumentDB (with MongoDB compatibility)
@@ -71,6 +73,7 @@ Only the latest version gets security updates. We won't support older versions.
   * `AWS/EC2Spot` - Elastic Compute Cloud for Spot Instances
   * `AWS/ECS` - Elastic Container Service (Service Metrics)
   * `AWS/EFS` - Elastic File System
+  * `AWS/EKS` - Elastic Kubernetes Service
   * `AWS/ElastiCache` - ElastiCache
   * `AWS/ElasticBeanstalk` - Elastic Beanstalk
   * `AWS/ElasticMapReduce` - Elastic MapReduce
@@ -83,6 +86,7 @@ Only the latest version gets security updates. We won't support older versions.
   * `AWS/GameLift` - GameLift
   * `AWS/GatewayELB` - Gateway Load Balancer
   * `AWS/GlobalAccelerator` - AWS Global Accelerator
+  * `AWS/Glue` - AWS Glue Jobs (metrics published with a `JobName` dimension)
   * `AWS/IoT` - IoT
   * `AWS/IPAM` - IP address manager
   * `AWS/Kafka` - Managed Apache Kafka
@@ -102,6 +106,7 @@ Only the latest version gets security updates. We won't support older versions.
   * `AWS/Neptune` - Neptune
   * `AWS/NetworkELB` - Network Load Balancer
   * `AWS/NetworkFirewall` - Network Firewall
+  * `AWS/OSIS` - OpenSearch Ingestion
   * `AWS/PrivateLinkEndpoints` - VPC Endpoint
   * `AWS/PrivateLinkServices` - VPC Endpoint Service
   * `AWS/Prometheus` - Managed Service for Prometheus
@@ -126,6 +131,7 @@ Only the latest version gets security updates. We won't support older versions.
   * `AWS/VPN` - VPN connection
   * `AWS/WAFV2` - Web Application Firewall v2
   * `AWS/WorkSpaces` - Workspaces
+  * `CloudWatchSynthetics` - CloudWatch Synthetics Canaries
   * `CWAgent` - CloudWatch agent
   * `ECS/ContainerInsights` - ECS/ContainerInsights (Fargate metrics)
   * `Glue` - AWS Glue Jobs

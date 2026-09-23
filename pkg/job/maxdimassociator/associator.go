@@ -85,7 +85,8 @@ func NewAssociator(logger logging.Logger, dimensionsRegexps []model.DimensionsRe
 
 			labels := make(map[string]string, len(match))
 			for i := 1; i < len(match); i++ {
-				labels[dr.DimensionsNames[i-1]] = match[i]
+				name := dr.DimensionsNames[i-1]
+				labels[name] = foldCase(name, match[i])
 			}
 			signature := prom_model.LabelsToSignature(labels)
 			m.dimensionsMapping[signature] = r
@@ -208,19 +209,21 @@ func buildLabelsMap(cwMetric *model.Metric, regexpMapping *dimensionsRegexpMappi
 				}
 			}
 
-			// AWS Sagemaker endpoint name may have upper case characters
-			// Resource ARN is only in lower case, hence transforming
-			// endpoint name value to be able to match the resource ARN
-			if cwMetric.Namespace == "AWS/SageMaker" && name == "EndpointName" {
-				value = strings.ToLower(value)
-			}
-
 			if rDimension == mDimension.Name {
-				labels[name] = value
+				labels[name] = foldCase(name, value)
 			}
 		}
 	}
 	return labels
+}
+
+// EndpointName is only extracted from SageMaker endpoint ARNs. Endpoint names are
+// case-insensitive, and the tagging API returns them lower cased or in their original case.
+func foldCase(dimension, value string) string {
+	if dimension == "EndpointName" {
+		return strings.ToLower(value)
+	}
+	return value
 }
 
 // containsAll returns true if a contains all elements of b

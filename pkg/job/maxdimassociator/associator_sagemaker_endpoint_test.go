@@ -20,9 +20,21 @@ var sagemakerEndpointHealthTwo = &model.TaggedResource{
 	Namespace: "/aws/sagemaker/Endpoints",
 }
 
+var sagemakerEndpointHealthUpper = &model.TaggedResource{
+	ARN:       "arn:aws:sagemaker:us-west-2:123456789012:endpoint/example-endpoint-upper",
+	Namespace: "/aws/sagemaker/Endpoints",
+}
+
+var sagemakerEndpointHealthMixed = &model.TaggedResource{
+	ARN:       "arn:aws:sagemaker:us-west-2:123456789012:endpoint/Example-Endpoint-Mixed",
+	Namespace: "/aws/sagemaker/Endpoints",
+}
+
 var sagemakerHealthResources = []*model.TaggedResource{
 	sagemakerEndpointHealthOne,
 	sagemakerEndpointHealthTwo,
+	sagemakerEndpointHealthUpper,
+	sagemakerEndpointHealthMixed,
 }
 
 func TestAssociatorSagemakerEndpoint(t *testing.T) {
@@ -73,6 +85,40 @@ func TestAssociatorSagemakerEndpoint(t *testing.T) {
 			},
 			expectedSkip:     true,
 			expectedResource: nil,
+		},
+		{
+			name: "2 dimensions should match in Upper case",
+			args: args{
+				dimensionRegexps: config.SupportedServices.GetService("/aws/sagemaker/Endpoints").ToModelDimensionsRegexp(),
+				resources:        sagemakerHealthResources,
+				metric: &model.Metric{
+					MetricName: "MemoryUtilization",
+					Namespace:  "/aws/sagemaker/Endpoints",
+					Dimensions: []model.Dimension{
+						{Name: "EndpointName", Value: "Example-Endpoint-Upper"},
+						{Name: "VariantName", Value: "AllTraffic"},
+					},
+				},
+			},
+			expectedSkip:     false,
+			expectedResource: sagemakerEndpointHealthUpper,
+		},
+		{
+			name: "2 dimensions should match in mixed case ARN",
+			args: args{
+				dimensionRegexps: config.SupportedServices.GetService("/aws/sagemaker/Endpoints").ToModelDimensionsRegexp(),
+				resources:        sagemakerHealthResources,
+				metric: &model.Metric{
+					MetricName: "MemoryUtilization",
+					Namespace:  "/aws/sagemaker/Endpoints",
+					Dimensions: []model.Dimension{
+						{Name: "EndpointName", Value: "Example-Endpoint-Mixed"},
+						{Name: "VariantName", Value: "AllTraffic"},
+					},
+				},
+			},
+			expectedSkip:     false,
+			expectedResource: sagemakerEndpointHealthMixed,
 		},
 	}
 
