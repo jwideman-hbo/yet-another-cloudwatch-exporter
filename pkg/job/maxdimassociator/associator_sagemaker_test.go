@@ -25,10 +25,16 @@ var sagemakerEndpointInvocationUpper = &model.TaggedResource{
 	Namespace: "AWS/SageMaker",
 }
 
+var sagemakerEndpointInvocationMixed = &model.TaggedResource{
+	ARN:       "arn:aws:sagemaker:us-west-2:123456789012:endpoint/Example-Endpoint-Mixed",
+	Namespace: "AWS/SageMaker",
+}
+
 var sagemakerInvocationResources = []*model.TaggedResource{
 	sagemakerEndpointInvocationOne,
 	sagemakerEndpointInvocationTwo,
 	sagemakerEndpointInvocationUpper,
+	sagemakerEndpointInvocationMixed,
 }
 
 func TestAssociatorSagemaker(t *testing.T) {
@@ -114,6 +120,23 @@ func TestAssociatorSagemaker(t *testing.T) {
 			},
 			expectedSkip:     false,
 			expectedResource: sagemakerEndpointInvocationUpper,
+		},
+		{
+			name: "2 dimensions should match in mixed case ARN",
+			args: args{
+				dimensionRegexps: config.SupportedServices.GetService("AWS/SageMaker").ToModelDimensionsRegexp(),
+				resources:        sagemakerInvocationResources,
+				metric: &model.Metric{
+					MetricName: "ModelLatency",
+					Namespace:  "AWS/SageMaker",
+					Dimensions: []model.Dimension{
+						{Name: "EndpointName", Value: "Example-Endpoint-Mixed"},
+						{Name: "VariantName", Value: "AllTraffic"},
+					},
+				},
+			},
+			expectedSkip:     false,
+			expectedResource: sagemakerEndpointInvocationMixed,
 		},
 	}
 
