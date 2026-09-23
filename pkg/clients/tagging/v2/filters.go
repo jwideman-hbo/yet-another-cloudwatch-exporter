@@ -371,7 +371,19 @@ var ServiceFilters = map[string]ServiceFilter{
 							Region:    region,
 							Tags:      []model.Tag{{Key: "ProtectionArn", Value: protectionArn}},
 						}
-						if taggedResource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
+						filterResource := *taggedResource
+						if len(job.SearchTags) > 0 || len(job.ExcludeTags) > 0 {
+							tags, err := c.shieldAPI.ListTagsForResource(ctx, &shield.ListTagsForResourceInput{ResourceARN: aws.String(protectionArn)})
+							promutil.ShieldAPICounter.Inc()
+							if err != nil {
+								return nil, fmt.Errorf("error calling shield.ListTagsForResource for %s: %w", protectionArn, err)
+							}
+							filterResource.Tags = append([]model.Tag{}, taggedResource.Tags...)
+							for _, tag := range tags.Tags {
+								filterResource.Tags = append(filterResource.Tags, model.Tag{Key: *tag.Key, Value: *tag.Value})
+							}
+						}
+						if filterResource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 							output = append(output, taggedResource)
 						}
 					}

@@ -316,6 +316,7 @@ var ServiceFilters = map[string]ServiceFilter{
 		ResourceFunc: func(ctx context.Context, c client, job model.DiscoveryJob, region string) ([]*model.TaggedResource, error) {
 			var output []*model.TaggedResource
 			pageNum := 0
+			var tagErr error
 			// Default page size is only 20 which can easily lead to throttling
 			input := &shield.ListProtectionsInput{MaxResults: aws.Int64(1000)}
 			err := c.shieldAPI.ListProtectionsPagesWithContext(ctx, input, func(page *shield.ListProtectionsOutput, _ bool) bool {
@@ -346,7 +347,20 @@ var ServiceFilters = map[string]ServiceFilter{
 							Region:    region,
 							Tags:      []model.Tag{{Key: "ProtectionArn", Value: protectionArn}},
 						}
-						if taggedResource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
+						filterResource := *taggedResource
+						if len(job.SearchTags) > 0 || len(job.ExcludeTags) > 0 {
+							tags, err := c.shieldAPI.ListTagsForResourceWithContext(ctx, &shield.ListTagsForResourceInput{ResourceARN: aws.String(protectionArn)})
+							promutil.ShieldAPICounter.Inc()
+							if err != nil {
+								tagErr = fmt.Errorf("error calling shield.ListTagsForResource for %s: %w", protectionArn, err)
+								return false
+							}
+							filterResource.Tags = append([]model.Tag{}, taggedResource.Tags...)
+							for _, tag := range tags.Tags {
+								filterResource.Tags = append(filterResource.Tags, model.Tag{Key: *tag.Key, Value: *tag.Value})
+							}
+						}
+						if filterResource.ShouldInclude(job.SearchTags, job.ExcludeTags) {
 							output = append(output, taggedResource)
 						}
 					}
@@ -355,6 +369,9 @@ var ServiceFilters = map[string]ServiceFilter{
 			})
 			if err != nil {
 				return nil, fmt.Errorf("error calling shiled.ListProtections, %w", err)
+			}
+			if tagErr != nil {
+				return nil, tagErr
 			}
 			return output, nil
 		},

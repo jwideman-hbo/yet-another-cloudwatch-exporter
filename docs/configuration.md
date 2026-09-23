@@ -97,7 +97,7 @@ roles:
 searchTags:
   [ - <search_tags_config> ... ]
 
-# List of Key/Value pairs to exclude from discovery (any may match).
+# List of Key/Value pairs to exclude discovered, tagged resources (any may match).
 # Exclusion takes precedence over searchTags. Missing tags do not match.
 # The key is the AWS Tag key and is case-sensitive
 # The value will be treated as a regex
@@ -381,7 +381,9 @@ searchTags:
 
 ### `exclude_tags_config`
 
-Any matching entry excludes the resource. Resources with a missing tag or a non-matching value are not excluded.
+Any matching entry excludes a discovered, tagged resource. Resources with a missing tag or a non-matching value are not excluded. This filters resources before GetMetricData queries are built; it does not filter by the tags of an unassociated CloudWatch series. Dimensionless or unassociated series may still be queried when other resources remain in the job.
+
+Not every supported discovery namespace discovers taggable resources. For example, `AWS/Usage` has no resource-tag discovery path, so `searchTags` and `excludeTags` have no effect on its series. Use these filters only where YACE can discover and associate tagged AWS resources. For `AWS/DDoSProtection`, Shield protection tags are fetched to filter protected-resource entries; tags on the protected resource (such as an ALB) are not substituted for protection tags. Shield tag lookup requires `shield:ListTagsForResource` when tag filters are configured; a lookup failure fails the job rather than silently bypassing a filter.
 
 ```yaml
 excludeTags:
