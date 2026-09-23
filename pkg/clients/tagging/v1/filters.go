@@ -348,7 +348,7 @@ var ServiceFilters = map[string]ServiceFilter{
 							Tags:      []model.Tag{{Key: "ProtectionArn", Value: protectionArn}},
 						}
 						filterResource := *taggedResource
-						if len(job.SearchTags) > 0 || len(job.ExcludeTags) > 0 {
+						if len(job.ExcludeTags) > 0 {
 							tags, err := c.shieldAPI.ListTagsForResourceWithContext(ctx, &shield.ListTagsForResourceInput{ResourceARN: aws.String(protectionArn)})
 							promutil.ShieldAPICounter.Inc()
 							if err != nil {

@@ -69,7 +69,9 @@ func TestShieldProtectionTagsFilterSyntheticResources(t *testing.T) {
 		lookupFails  bool
 	}{
 		{name: "no filters retain default without tag lookup", wantIncluded: true},
-		{name: "search matches real protection tags", search: []model.SearchTag{{Key: "team", Value: regexp.MustCompile("^drop$")}}, wantIncluded: true},
+		{name: "search only retains synthetic tag behavior", search: []model.SearchTag{{Key: "ProtectionArn", Value: regexp.MustCompile("protection/abc$")}}, wantIncluded: true},
+		{name: "search matches real protection tags with exclusions", search: []model.SearchTag{{Key: "team", Value: regexp.MustCompile("^drop$")}}, exclude: []model.SearchTag{{Key: "missing", Value: regexp.MustCompile(".*")}}, wantIncluded: true},
+		{name: "exclusion matches real protection tag", exclude: []model.SearchTag{{Key: "team", Value: regexp.MustCompile("^drop$")}}},
 		{name: "exclusion overrides matching search", search: []model.SearchTag{{Key: "team", Value: regexp.MustCompile("^drop$")}}, exclude: []model.SearchTag{{Key: "team", Value: regexp.MustCompile("^drop$")}}},
 		{name: "missing exclusion tag does not match", exclude: []model.SearchTag{{Key: "missing", Value: regexp.MustCompile(".*")}}, wantIncluded: true},
 		{name: "tag lookup failure prevents unfiltered output", exclude: []model.SearchTag{{Key: "team", Value: regexp.MustCompile("drop")}}, lookupFails: true},
@@ -110,7 +112,7 @@ func TestShieldProtectionTagsFilterSyntheticResources(t *testing.T) {
 					require.Empty(t, results)
 				}
 			}
-			if len(tc.search)+len(tc.exclude) > 0 {
+			if len(tc.exclude) > 0 {
 				require.Equal(t, 1, tagCalls)
 			} else {
 				require.Zero(t, tagCalls)
